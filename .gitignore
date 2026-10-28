@@ -1,0 +1,64 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# PWA
+# These are next-pwa/workbox build artifacts and are regenerated, so they stay out.
+public/sw.js.map
+public/workbox-*.js
+public/workbox-*.js.map
+public/fallback-*.js
+public/swe-worker-*.js
+# public/sw.js is NOT one of them -- it is hand-written source. Ignoring it meant a fresh
+# clone or CI deploy shipped no /sw.js at all: registration 404s, the offline shell never
+# caches, and the install only behaves like a PWA on the machine the file happens to exist on.
+
+# issued access credentials — never commit
+credentials.txt
+
+# knowledge graph build output
+graphify-out/
+
+# ────────────────────────────────────────────────────────────
+# The VPS expert-advisors project, which now also publishes this app's market data
+# from src/market_feed. It is a separate service with its own git repo, deployed to a
+# Windows VPS next to a MetaTrader 5 terminal — not built or shipped with this app. It
+# lives here only so the two can be worked on side by side.
+# ────────────────────────────────────────────────────────────
+vps_expert_advisors_projects/
+vps_expert_advisors_projects.rar
+.playwright-mcp

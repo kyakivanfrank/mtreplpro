@@ -1,0 +1,28 @@
+{
+  "name": "mt5-replica",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/next.mjs dev",
+    "build": "node scripts/next.mjs build",
+    "start": "node scripts/next.mjs start",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000"
+  },
+  "dependencies": {
+    "lightweight-charts": "^5.2.1",
+    "next": "^16.3.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "autoprefixer": "^10.4.19",
+    "cloudflared": "^0.7.3",
+    "playwright": "^1.63.0",
+    "postcss": "^8.4.45",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.4"
+  }
+}

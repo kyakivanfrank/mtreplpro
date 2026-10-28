@@ -1,0 +1,880 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background-color: #080b12;
+  color: #f5f7fa;
+  /*
+   * The app at large stays on the system stack -- that is what makes it read as native.
+   * "Inter" used to head this list but was never loaded, so it silently resolved to
+   * system-ui everywhere except a dev machine that happened to have Inter installed.
+   * Inter is now a real, self-hosted face (see app/layout.tsx) and is opted into per
+   * element with the `font-inter` utility, not inherited globally.
+   */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /*
+   * Safe areas.
+   *
+   * These read 0 in Safari-with-chrome (the browser bars already cover the unsafe regions)
+   * and jump to the notch / Dynamic Island + home-indicator sizes the moment the app is
+   * launched from the home screen under black-translucent. Every fixed edge in the app is
+   * therefore expressed against these, never against a constant.
+   */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /*
+   * Bottom nav geometry, kept in one place so the bar and the scroll spacers that clear it
+   * can never drift apart.
+   *
+   * --nav-gap-bottom is a max(), NOT a sum: adding the home-indicator inset on top of the
+   * design gap double-counts it, which floats the bar ~34px too high in standalone and
+   * leaves a dead black band underneath it, while looking correct in Safari.
+   */
+  --nav-gap-top: 1.25rem;
+  --nav-gap-bottom: max(1.14rem, var(--safe-bottom));
+  --nav-pill-height: 3.875rem;
+  /* h-14 button + 2px button margin + 2px pill padding */
+  --nav-total-height: calc(var(--nav-gap-top) + var(--nav-pill-height) + var(--nav-gap-bottom));
+}
+
+/*
+ * MT5-style time axis: the timeline runs edge-to-edge.
+ *
+ * The JS in useChartInstance hides the right stub <td> and gives the time scale <td>
+ * colSpan=2 and the class .mt5-timeline-cell. To make the timeline visually reach the
+ * edge AND capture mouse/touch events in the right corner, we force the <td>, <div>,
+ * and <canvas> elements to stretch to 100% of the table width. Lightweight-charts creates
+ * two canvases (z-index 1 for visuals, z-index 2 for interactivity). Stretching them via
+ * CSS slightly scales the rendered output (~7%), but it perfectly extends the top border
+ * and makes the full corner interactive, exactly as the user discovered.
+ */
+.mt5-timeline-cell,
+.mt5-timeline-cell div,
+.mt5-timeline-cell canvas {
+  width: 100% !important;
+  transform-origin: center;
+}
+
+/*
+ * Outfit ships as one static Medium cut, and every element that opts into it also carries a
+ * `font-semibold` inherited from when those rows were on the system stack. Asked for 600 by a
+ * family that only has 500, a browser fakes it -- it smears each glyph sideways and re-draws
+ * it. On a hand-edited face that is the one thing worth forbidding: the point of the file is
+ * its outlines, and synthesis renders outlines nobody drew.
+ * Deliberately NOT paired with `tabular-nums`, which is the opposite of what the app-wide rule
+ * in CLAUDE.md asks for, and the exception is the whole point of this face.
+ *
+ * The file carries two sets of digits: the default proportional ones at glyph ids 20-29, and a
+ * tabular set at 401-410 that `tnum` substitutes in. They are not the same drawings re-spaced --
+ * the default `1` is 2 contours and 8 points against the tabular one's 3 and 12, and the default
+ * `3` is a single 48-point contour reaching y=749, above the 710 cap. The edits live in the
+ * default set, because that is the set a font editor puts in front of you. Asking for
+ * `tabular-nums` here renders the other set and silently throws every one of them away.
+ *
+ * The cost is real: those digits are proportional and uneven -- `1` is 355 units against 655
+ * for `0` -- so a ticking figure changes width. It is bearable because each of these three
+ * numbers is right-aligned by its row's `justify-between`, which pins the edge that matters and
+ * leaves the movement inside the number.
+ */
+.font-outfit {
+  font-synthesis-weight: none;
+
+  /*
+   * Condensed to 80% of its width -- and by `scaleX`, which is the opposite of what
+   * `.symbol-condensed` does further down. The two rules want the same look and cannot use the
+   * same mechanism, for one reason:
+   *
+   * `font-size: 0.8em` resolves against the PARENT's computed size, never the element's own. On
+   * `.symbol-condensed` that is harmless, because those spans are condensing whatever the row
+   * hands them. Here it was destructive: this class lands on elements that each declare a size
+   * of their own -- `text-[18px]` on the position P/L, `text-[17px]` on the header total,
+   * `text-[16px]` on the History deal and the chart's lot field -- and because this rule is
+   * emitted after Tailwind's utilities it won the cascade and threw every one of them away. The
+   * numbers were not being scaled to 80% of 18px; they were being re-sized to 80% of whatever
+   * the row happened to inherit, and the declared size stopped meaning anything.
+   *
+   * `scaleX(0.8)` reaches the identical shape from the other side: render at the element's own
+   * declared size, then squash. Stroke weights match too -- vertical stems land at 0.8,
+   * horizontals are untouched -- because 0.8-then-stretch-vertically and squash-horizontally
+   * are the same composite. What it does not do is narrow the layout box, since transforms run
+   * after layout. That is the whole cost, and it is nothing here: every element wearing this
+   * class is the last item in a `justify-between` row or is centred in its own box, so there is
+   * no neighbour waiting on the width.
+   *
+   * `inline-block` is what makes the transform apply at all -- an inline box ignores it.
+   */
+  display: inline-block;
+  transform: scaleX(0.8);
+
+  /*
+   * And tabular figures forced off, for this face only.
+   *
+   * The file carries two sets of digits and `tnum` swaps in the second one, which is not where
+   * the edits live -- the long version is above. Written here rather than left to each element,
+   * because the elements do not all agree: the lot field on the chart bar arrives with
+   * `tabular-nums` already in its own class list, inherited from when it was on the system
+   * stack, and a caller opting into this face has no way to take that back. So the face takes
+   * it back. Anything wearing `font-outfit` renders the drawn digits no matter what it is
+   * wearing underneath.
+   */
+  font-variant-numeric: normal;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  /*
+   * Pinned, not merely "at least full height". In standalone iOS the webview rubber-bands
+   * the whole document, which drags the fixed nav off the bottom edge and exposes a black
+   * band under it. The app renders its own 100dvh shell, so the document never needs to
+   * scroll itself.
+   */
+  height: 100%;
+  overflow: hidden;
+  background: #080b12;
+  color: #f5f7fa;
+
+  /* Make the app feel native */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+
+  /* Disable overscroll bounce (pull-to-refresh/scroll-loading) */
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #111528 0%, #080b12 48%);
+}
+
+.screen-frame {
+  width: min(420px, 100%);
+  margin: 0 auto;
+  padding: 20px 0 24px;
+}
+
+.card {
+  background: rgba(16, 22, 34, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, .35);
+}
+
+.sheet {
+  background: rgba(15, 20, 33, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 30px;
+  padding: 18px;
+}
+
+.heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title-large {
+  font-size: 28px;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  color: #9aa3b2;
+  font-size: 0.95rem;
+}
+
+.nav-pill {
+  display: inline-flex;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #dde4ef;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.9rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(9, 110, 96, 0.18);
+  color: #8ce1c3;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.row+.row {
+  margin-top: 14px;
+}
+
+.primary-value {
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.secondary-value {
+  color: #8f9ab0;
+  font-size: 0.95rem;
+}
+
+.navbar {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px 20px;
+  background: rgba(7, 11, 19, 0.98);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(18px);
+}
+
+.navbar a {
+  color: #c7d0e2;
+  text-decoration: none;
+  font-size: 0.82rem;
+}
+
+.navbar img {
+  width: 24px;
+  height: 24px;
+}
+
+.navbar .active {
+  color: #ffffff;
+}
+
+.block {
+  padding: 18px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 14px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.list-item+.list-item {
+  margin-top: 12px;
+}
+
+.list-item .label {
+  display: grid;
+  gap: 4px;
+}
+
+.icon-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  display: grid;
+  place-items: center;
+}
+
+.icon-box img {
+  width: 20px;
+  height: 20px;
+}
+
+.chart-card {
+  background: linear-gradient(180deg, rgba(16, 22, 34, 0.97), rgba(9, 13, 21, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 26px;
+  padding: 16px;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.chart-grid .stat {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 16px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.chart-grid .stat strong {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.button-group button {
+  flex: 1;
+  border: none;
+  border-radius: 16px;
+  padding: 14px 0;
+  font-weight: 600;
+  color: #f5f7fa;
+}
+
+.button-group button.buy {
+  background: linear-gradient(180deg, #34d9ad, #1f9d81);
+}
+
+.button-group button.sell {
+  background: linear-gradient(180deg, #ff636d, #d44d59);
+}
+
+.modal-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding: 18px;
+  background: rgba(3, 7, 14, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.modal {
+  width: min(420px, 100%);
+  background: #0b1220;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 18px;
+}
+
+.modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.modal .pill {
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #c7d0e2;
+  font-size: 0.85rem;
+}
+
+.modal .field {
+  margin-top: 14px;
+}
+
+.modal .field label {
+  display: block;
+  color: #9aa3b2;
+  font-size: 0.82rem;
+  margin-bottom: 6px;
+}
+
+.modal .field input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #f5f7fa;
+  padding: 14px 12px;
+}
+
+.modal .cta {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.modal .cta button {
+  border: none;
+  border-radius: 18px;
+  padding: 14px 0;
+  font-weight: 600;
+}
+
+.modal .cta button.primary {
+  background: linear-gradient(180deg, #34d9ad, #1f9d81);
+  color: #fff;
+}
+
+.modal .cta button.secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f5f7fa;
+}
+
+@media (max-width: 420px) {
+  .screen-frame {
+    padding: 16px 12px 20px;
+  }
+
+  .navbar {
+    padding: 10px 14px;
+  }
+
+  .card,
+  .modal {
+    border-radius: 24px;
+  }
+}
+
+/* Floating Navigation Classes (Moved from Tailwind Config) */
+/*
+ * The glass recipe, named once.
+ *
+ * The tab bar, the history segmented control and every icon-only header button are all the
+ * same material — and they are on screen together, so any drift between them is visible as
+ * two different kinds of glass rather than as a mistake in one of them.
+ *
+ * `nav-pill-lift` below repeats these numbers as literals rather than reading the variables.
+ * That is deliberate: a keyframe interpolating a custom property is the one place this could
+ * fail quietly, and the animation is the part worth not risking. Change these and change the
+ * keyframe with them.
+ */
+:root {
+  --glass-bg: rgba(28, 28, 30, 0.55);
+  --glass-edge: rgba(255, 255, 255, 0.08);
+  --glass-edge-top: rgba(255, 255, 255, 0.15);
+  --glass-blur: 8px;
+
+  /*
+   * The same material at modal scale.
+   *
+   * Two things separate a dialog from a control. It is a large surface, and a large surface
+   * blurred at 8px still shows the *shapes* behind it — a price ladder reads as a price ladder
+   * through it, which turns the copy on top into something you have to pick out. And it carries
+   * body text rather than a glyph, so it needs a floor under the contrast that a 40px circle
+   * does not. Hence more blur and more fill, and a saturation lift so the colour that survives
+   * the blur still looks like colour rather than grey.
+   *
+   * Half-transparent: the same grey the controls use, at half strength, so the screen behind
+   * genuinely shows through instead of being covered by a slightly softer lid. Blur carries
+   * what the fill no longer does — the less a fill hides, the more the blur has to, which is
+   * why the two move together and neither is worth tuning alone.
+   */
+  --glass-dialog-bg: rgba(28, 28, 30, 0.5);
+  --glass-dialog-blur: 34px;
+  /* A variable rather than a literal in the rule, so a surface can dial the whole material —
+     fill, blur and saturation — from one place. See `.action-sheet-panel`. */
+  --glass-dialog-saturate: 180%;
+}
+
+.floating-nav {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
+  border-top: 1px solid var(--glass-edge-top);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+  /* saturate(100%) is a no-op, and the minifier rewrites it to the argument-less
+     saturate() form, which not every WebKit build parses -- an unparsed function would
+     invalidate the whole declaration and drop the blur. */
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+}
+
+/*
+ * The same glass, at control scale.
+ *
+ * Only the shadow differs: the tab bar's `0 8px 32px` is sized for a bar floating over a whole
+ * screen, and under a 40px circle it reads as a smudge rather than as lift.
+ */
+.glass-control {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
+  border-top: 1px solid var(--glass-edge-top);
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  /* Positions the tint layer below. */
+  position: relative;
+}
+
+/*
+ * Pressed and hovered: white *over* the glass, not instead of it.
+ *
+ * Swapping `background-color` was the obvious way and the wrong one — the smoked fill is what
+ * the blur and the border are reading against, so replacing it with white left a pale disc with
+ * no depth, which is not a pressed state so much as a different button. The tint is its own
+ * layer instead: the base fill, the blur, the border and the shadow all stay exactly where they
+ * were, and a sheet of white fades in on top. Glass catching the light.
+ *
+ * A pseudo-element rather than a second background, because opacity is the one property that
+ * can be transitioned cleanly and composited on the GPU; interpolating a gradient from `none`
+ * is not defined and would snap.
+ *
+ * Inset zero resolves against the padding box, so the tint stops at the border rather than
+ * washing over it and softening the edge.
+ */
+.glass-control::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: #ffffff;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+}
+
+/*
+ * Hover is gated behind a device that actually has one. On a touchscreen `:hover` latches after
+ * a tap and stays latched until something else is tapped, so an ungated rule would leave the
+ * last button touched looking permanently pressed.
+ */
+@media (hover: hover) {
+  .glass-control:hover::after {
+    opacity: 0.1;
+  }
+}
+
+.glass-control:active::after {
+  opacity: 0.18;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-control::after {
+    transition: none;
+  }
+}
+
+.floating-nav-item {
+  color: #ffffff;
+  transition: color 180ms ease;
+}
+
+/* Tint lands with the pill rather than ahead of it, so the blue never arrives at an
+   empty slot. Leaving a tab still fades out immediately (no delay on the base rule). */
+.floating-nav-item.active {
+  color: #0A84FF;
+  transition: color 200ms ease 160ms;
+}
+
+/*
+ * Shared selection pill.
+ *
+ * The outer element owns position -- it translates from the outgoing tab's box to the
+ * incoming one on the iOS "decelerate hard, no bounce" curve. The inner surface owns
+ * the costume change: it peels off the bar and, for the length of the trip, becomes a
+ * miniature of .floating-nav itself -- same smoked fill, same 8px backdrop blur, same
+ * drop shadow, with the hairline dialled fainter so it reads as a detached shard of
+ * the bar rather than a second bar. On arrival it drops that costume and goes back to
+ * the flat white wash it wears at rest.
+ *
+ * Splitting position and costume across two elements lets a transition and a keyframe
+ * animation both drive transform without fighting over the property.
+ */
+.floating-nav-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  will-change: transform, width;
+}
+
+.floating-nav-pill.is-animated {
+  transition:
+    transform 420ms cubic-bezier(0.32, 0.72, 0, 1),
+    width 420ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.floating-nav-pill-surface {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0);
+  box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  /* Identity blur at rest keeps the compositing layer alive, so the first frame of the
+     lift doesn't pay for creating a backdrop root mid-animation. */
+  -webkit-backdrop-filter: blur(0px);
+  backdrop-filter: blur(0px);
+  will-change: transform, backdrop-filter;
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+}
+
+.floating-nav-pill-surface.travelling {
+  animation: nav-pill-lift 420ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes nav-pill-lift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    background-color: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0);
+    border-top-color: rgba(255, 255, 255, 0);
+    -webkit-backdrop-filter: blur(0px);
+    backdrop-filter: blur(0px);
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+
+  22% {
+    /* Costume fully on, well before the pill has covered much ground -- it lifts first,
+       then travels. 1.2x is what sells the detachment: at 56px tall inside a ~58px bar
+       it breaks past both edges, so you see glass over the page, not glass over glass. */
+    transform: translate3d(0, -2px, 0) scale(1.2);
+    background-color: rgba(28, 28, 30, 0.55);
+    border-color: rgba(255, 255, 255, 0.05);
+    border-top-color: rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+  }
+
+  62% {
+    /* Held, unchanged, through the cruise -- the whole trip is spent as bar-glass. */
+    transform: translate3d(0, -2px, 0) scale(1.2);
+    background-color: rgba(28, 28, 30, 0.55);
+    border-color: rgba(255, 255, 255, 0.05);
+    border-top-color: rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    background-color: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0);
+    border-top-color: rgba(255, 255, 255, 0);
+    -webkit-backdrop-filter: blur(0px);
+    backdrop-filter: blur(0px);
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-nav-pill.is-animated {
+    transition: none;
+  }
+
+  .floating-nav-pill-surface.travelling {
+    animation: none;
+  }
+}
+
+.floating-nav-caption {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+/*
+ * The chart's timeframe row unrolling to the right.
+ *
+ * Scaled from the button's own edge rather than faded in, so it reads as the timeframe
+ * expanding into the list instead of a separate panel appearing over it.
+ *
+ * No `translateY` in it any more: the row now takes the toolbar's whole footprint with
+ * `inset-0` rather than being centred against a button, and a keyframe that re-asserted a
+ * -50% shift would drag it half its own height off the top on the first frame.
+ */
+@keyframes tfbar {
+  from {
+    opacity: 0;
+    transform: scaleX(0.88);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-\[tfbar_140ms_ease-out\] {
+    animation: none;
+  }
+}
+
+/*
+ * The dialog panel: glass, not a slab.
+ *
+ * It sits on the scrim, which is already darkening and lightly blurring the whole screen, so
+ * what this samples is a screen once removed — and that is the point. A solid fill made the
+ * dialog a rectangle that had arrived from nowhere; letting the app show through it, softened
+ * twice, puts it *in front of* the screen it interrupted rather than instead of it.
+ *
+ * Declared here rather than as Tailwind utilities on the element because `backdrop-filter`,
+ * its `-webkit-` twin, and the fill they read against have to change together — split across
+ * two files, the next person tuning the alpha silently breaks the material.
+ */
+.center-dialog-panel,
+.sheet-panel {
+  background: var(--glass-dialog-bg);
+  -webkit-backdrop-filter: blur(var(--glass-dialog-blur)) saturate(var(--glass-dialog-saturate));
+  backdrop-filter: blur(var(--glass-dialog-blur)) saturate(var(--glass-dialog-saturate));
+}
+
+/*
+ * The bottom sheet's glass, a shade denser and a tenth less blurred.
+ *
+ * Same material, retuned for a surface that sits low over a live book. The centred dialog
+ * interrupts a screen you have stopped reading; this one rises over rows that are still ticking
+ * behind it, so the fill goes heavier to hold the blue and red of the actions off whatever
+ * colour is moving underneath, and the blur and saturation both come down 10% so the sheet
+ * reads as glass over the app rather than as a lid on it.
+ *
+ * The fill is iOS's own grouped-sheet grey (#1C1C1E) rather than black: at this alpha, pure
+ * black reads as a hole punched in the screen, where the grey keeps the panel a surface.
+ *
+ * Overrides the three variables on the element itself rather than restating the filter, so the
+ * declaration above stays the single place the material is built.
+ */
+.action-sheet-panel {
+  --glass-dialog-bg: rgba(28, 28, 30, 0.8);
+  --glass-dialog-blur: 10.6px;
+  --glass-dialog-saturate: 162%;
+}
+
+/*
+ * The frame, which is separate from the material.
+ *
+ * `.sheet-panel` is the same glass with none of it — no rim, no lift, and no corner rounding of
+ * its own. That is for a panel that is being read rather than pressed: the action group below
+ * it is a control and takes an edge, and this one is a card of facts that only needs to be
+ * legible against what is behind it. Splitting them means neither can be tuned into the other
+ * by accident.
+ */
+.center-dialog-panel {
+  border: 1px solid var(--glass-edge);
+  border-top: 1px solid var(--glass-edge-top);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+}
+
+/*
+ * The centred dialog's entrance is inline (it is state-driven, three phases), so the
+ * reduced-motion opt-out has to outrank an inline `transition` — hence `!important`, which is
+ * doing real work here rather than papering over specificity. The dialog still appears and
+ * disappears; it simply arrives already in place.
+ */
+@media (prefers-reduced-motion: reduce) {
+
+  .center-dialog-scrim,
+  .center-dialog-panel {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+/*
+ * The overlay header.
+ *
+ * A filter and nothing else — no background colour, deliberately. A tint would be the easy way
+ * to keep the title legible over whatever scrolls beneath, but it would also put back the
+ * opaque bar this exists to remove. The blur plus a lift in saturation does the separating,
+ * the same way iOS's own materials do.
+ *
+ * `.sticky-bar` is the same material for a row that parks under the header once it is scrolled
+ * to. One declaration, two names — the two end up touching each other, and nothing looks more
+ * like a mistake than two slightly different kinds of glass sharing an edge.
+ */
+.view-header,
+.sticky-bar {
+  -webkit-backdrop-filter: blur(1.2px) saturate(150%);
+  backdrop-filter: blur(1.2px) saturate(150%);
+}
+
+/*
+ * The same bar, filled.
+ *
+ * Trade and History both put a lot of small numbers directly over a scrolling list, and 1.2px
+ * of blur does not separate a price under the bar from a price in it — the two read as one
+ * column of figures at a glance. These two screens take a near-opaque black under the filter
+ * instead: the glass is still glass (the buttons and the segmented pill are unchanged, and
+ * they still sample and lift what is behind them), but the bar they sit on is a bar.
+ *
+ * Not on `.view-header` itself, because Quotes and Settings have nothing under their headers
+ * worth hiding and the blur alone is the better surface there.
+ *
+ * `.sticky-bar` is included unconditionally: it exists only on Trade, and it shares an edge
+ * with the header above it, so it has to be the same fill or the seam shows.
+ */
+.view-header-solid,
+.sticky-bar {
+  background-color: rgba(0, 0, 0, 0.86);
+}
+
+/*
+ * The instrument code, condensed to 80% of its width.
+ *
+ * `XAUUSDm`, `EURUSDm`, `USDJPYm` — seven or eight capitals in semibold, and they open every row
+ * on Trade, History and the chart's OHLC line. Narrowing them is what gives the side, the volume
+ * and the P/L beside them room; at full width the longer codes crowd whatever follows.
+ *
+ * ── Why this is not `transform: scaleX(0.8)` ─────────────────────────
+ *
+ * Because a transform is applied *after* layout. The glyphs would look squeezed and the box they
+ * sit in would stay exactly as wide, so the neighbours would gain a bigger gap rather than any
+ * actual space — which is the half of this that matters.
+ *
+ * Shrinking the font instead makes the box genuinely 80% as wide, and the compensating
+ * `scaleY(1.25)` puts the height back. The composite is identical to a horizontal squash,
+ * stroke weights included — vertical stems end up 0.8, horizontals 0.8 x 1.25 = unchanged —
+ * except that the row around it actually reflows. `tracking-tight` is in `em`, so the letter
+ * spacing condenses with it rather than staying at its old absolute value.
+ *
+ * The default 50% 50% origin is deliberate: every row using this centres its items, so growing
+ * the glyph symmetrically about the middle of its shorter box lands it back on the same optical
+ * centre line as the text beside it.
+ */
+.symbol-condensed {
+  display: inline-block;
+  font-size: 0.8em;
+  transform: scaleY(1.25);
+}
