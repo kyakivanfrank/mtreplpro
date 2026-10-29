@@ -59,6 +59,8 @@ export interface DialogAction {
   onClick?: () => void;
   /** Whether choosing this dismisses the dialog. Off by default — an inert pill should not. */
   closes?: boolean;
+  /** Label colour, for the one pill the terminal sets apart (the chart menu's red "Trade"). */
+  color?: string;
 }
 
 /** iOS `body` and `subhead`, straight off the type scale — see CLAUDE.md §1. */
@@ -249,7 +251,7 @@ export default function CenterDialog({
         <div className="flex flex-col gap-3 pt-4">
           {actions.map((action) => (
             <Choice key={action.label} onClick={() => choose(action)}>
-              {action.label}
+              {action.color ? <span style={{ color: action.color }}>{action.label}</span> : action.label}
             </Choice>
           ))}
           {cancelLabel !== null && <Choice onClick={onClose}>{cancelLabel}</Choice>}

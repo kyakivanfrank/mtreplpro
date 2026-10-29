@@ -12,9 +12,9 @@ export function HistoryHeaderLeft() {
   return (
     <button
       aria-label="Filter history"
-      className="glass-control w-[52px] h-[52px] rounded-full flex items-center justify-center cursor-pointer"
+      className="glass-control w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer"
     >
-      <FilterIcon className="w-[26px] h-[26px] text-white" />
+      <FilterIcon className="w-[24px] h-[24px] text-white" />
     </button>
   );
 }
@@ -41,7 +41,7 @@ export function HistoryHeaderRight() {
   return (
     <button
       aria-label="History period"
-      className="glass-control w-[52px] h-[52px] rounded-full flex items-center justify-center cursor-pointer"
+      className="glass-control w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer"
     >
       <ClockIcon />
     </button>

@@ -6,14 +6,8 @@
   color-scheme: dark;
   background-color: #080b12;
   color: #f5f7fa;
-  /*
-   * The app at large stays on the system stack -- that is what makes it read as native.
-   * "Inter" used to head this list but was never loaded, so it silently resolved to
-   * system-ui everywhere except a dev machine that happened to have Inter installed.
-   * Inter is now a real, self-hosted face (see app/layout.tsx) and is opted into per
-   * element with the `font-inter` utility, not inherited globally.
-   */
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* MT5's first face: SF Pro, the system font, for everything that is not a terminal figure. */
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
   /*
    * Safe areas.
@@ -26,102 +20,29 @@
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
+  /* Bottom nav geometry, in one place so the bar and the scroll spacers that clear it agree. */
   /*
-   * Bottom nav geometry, kept in one place so the bar and the scroll spacers that clear it
-   * can never drift apart.
-   *
-   * --nav-gap-bottom is a max(), NOT a sum: adding the home-indicator inset on top of the
-   * design gap double-counts it, which floats the bar ~34px too high in standalone and
-   * leaves a dead black band underneath it, while looking correct in Safari.
+   * Measured on a 393pt iPhone: 21pt side margins, a 62pt bar, its bottom edge 23pt above the
+   * screen's -- inside the home-indicator inset, not stacked on it. Expressed as rules rather than
+   * one phone's numbers: margins scale with width, and the bottom gap follows the safe area with a
+   * floor for phones that have none.
    */
-  --nav-gap-top: 1.25rem;
-  --nav-gap-bottom: max(1.14rem, var(--safe-bottom));
-  --nav-pill-height: 3.875rem;
-  /* h-14 button + 2px button margin + 2px pill padding */
-  --nav-total-height: calc(var(--nav-gap-top) + var(--nav-pill-height) + var(--nav-gap-bottom));
+  --nav-side: clamp(14px, 5.4vw, 26px);
+  --nav-bar-height: 62px;
+  --nav-gap-top: 8px;
+  /* A floor rather than the inset alone: on the installed app the bottom inset has been seen to
+     read 0, which dropped the bar 9pt below the real one (re-measured from the second pair of
+     recordings: 21.5pt gap on the real app). Phones with a home indicator are all >= 812pt tall. */
+  --nav-gap-floor: 12px;
+  --nav-gap-bottom: max(var(--nav-gap-floor), calc(var(--safe-bottom) - 12px));
+  --nav-pill-height: var(--nav-bar-height);
+  --nav-total-height: calc(var(--nav-gap-top) + var(--nav-bar-height) + var(--nav-gap-bottom));
 }
 
-/*
- * MT5-style time axis: the timeline runs edge-to-edge.
- *
- * The JS in useChartInstance hides the right stub <td> and gives the time scale <td>
- * colSpan=2 and the class .mt5-timeline-cell. To make the timeline visually reach the
- * edge AND capture mouse/touch events in the right corner, we force the <td>, <div>,
- * and <canvas> elements to stretch to 100% of the table width. Lightweight-charts creates
- * two canvases (z-index 1 for visuals, z-index 2 for interactivity). Stretching them via
- * CSS slightly scales the rendered output (~7%), but it perfectly extends the top border
- * and makes the full corner interactive, exactly as the user discovered.
- */
-.mt5-timeline-cell,
-.mt5-timeline-cell div,
-.mt5-timeline-cell canvas {
-  width: 100% !important;
-  transform-origin: center;
-}
-
-/*
- * Outfit ships as one static Medium cut, and every element that opts into it also carries a
- * `font-semibold` inherited from when those rows were on the system stack. Asked for 600 by a
- * family that only has 500, a browser fakes it -- it smears each glyph sideways and re-draws
- * it. On a hand-edited face that is the one thing worth forbidding: the point of the file is
- * its outlines, and synthesis renders outlines nobody drew.
- * Deliberately NOT paired with `tabular-nums`, which is the opposite of what the app-wide rule
- * in CLAUDE.md asks for, and the exception is the whole point of this face.
- *
- * The file carries two sets of digits: the default proportional ones at glyph ids 20-29, and a
- * tabular set at 401-410 that `tnum` substitutes in. They are not the same drawings re-spaced --
- * the default `1` is 2 contours and 8 points against the tabular one's 3 and 12, and the default
- * `3` is a single 48-point contour reaching y=749, above the 710 cap. The edits live in the
- * default set, because that is the set a font editor puts in front of you. Asking for
- * `tabular-nums` here renders the other set and silently throws every one of them away.
- *
- * The cost is real: those digits are proportional and uneven -- `1` is 355 units against 655
- * for `0` -- so a ticking figure changes width. It is bearable because each of these three
- * numbers is right-aligned by its row's `justify-between`, which pins the edge that matters and
- * leaves the movement inside the number.
- */
-.font-outfit {
-  font-synthesis-weight: none;
-
-  /*
-   * Condensed to 80% of its width -- and by `scaleX`, which is the opposite of what
-   * `.symbol-condensed` does further down. The two rules want the same look and cannot use the
-   * same mechanism, for one reason:
-   *
-   * `font-size: 0.8em` resolves against the PARENT's computed size, never the element's own. On
-   * `.symbol-condensed` that is harmless, because those spans are condensing whatever the row
-   * hands them. Here it was destructive: this class lands on elements that each declare a size
-   * of their own -- `text-[18px]` on the position P/L, `text-[17px]` on the header total,
-   * `text-[16px]` on the History deal and the chart's lot field -- and because this rule is
-   * emitted after Tailwind's utilities it won the cascade and threw every one of them away. The
-   * numbers were not being scaled to 80% of 18px; they were being re-sized to 80% of whatever
-   * the row happened to inherit, and the declared size stopped meaning anything.
-   *
-   * `scaleX(0.8)` reaches the identical shape from the other side: render at the element's own
-   * declared size, then squash. Stroke weights match too -- vertical stems land at 0.8,
-   * horizontals are untouched -- because 0.8-then-stretch-vertically and squash-horizontally
-   * are the same composite. What it does not do is narrow the layout box, since transforms run
-   * after layout. That is the whole cost, and it is nothing here: every element wearing this
-   * class is the last item in a `justify-between` row or is centred in its own box, so there is
-   * no neighbour waiting on the width.
-   *
-   * `inline-block` is what makes the transform apply at all -- an inline box ignores it.
-   */
-  display: inline-block;
-  transform: scaleX(0.8);
-
-  /*
-   * And tabular figures forced off, for this face only.
-   *
-   * The file carries two sets of digits and `tnum` swaps in the second one, which is not where
-   * the edits live -- the long version is above. Written here rather than left to each element,
-   * because the elements do not all agree: the lot field on the chart bar arrives with
-   * `tabular-nums` already in its own class list, inherited from when it was on the system
-   * stack, and a caller opting into this face has no way to take that back. So the face takes
-   * it back. Anything wearing `font-outfit` renders the drawn digits no matter what it is
-   * wearing underneath.
-   */
-  font-variant-numeric: normal;
+@media (min-height: 780px) {
+  :root {
+    --nav-gap-floor: 21px;
+  }
 }
 
 * {
@@ -476,14 +397,10 @@ img {
  * The tab bar, the history segmented control and every icon-only header button are all the
  * same material — and they are on screen together, so any drift between them is visible as
  * two different kinds of glass rather than as a mistake in one of them.
- *
- * `nav-pill-lift` below repeats these numbers as literals rather than reading the variables.
- * That is deliberate: a keyframe interpolating a custom property is the one place this could
- * fail quietly, and the animation is the part worth not risking. Change these and change the
- * keyframe with them.
  */
 :root {
-  --glass-bg: rgba(28, 28, 30, 0.55);
+  /* Lands on #202020 over black, the tab bar and header buttons on the real terminal. */
+  --glass-bg: rgba(32, 32, 32, 0.78);
   --glass-edge: rgba(255, 255, 255, 0.08);
   --glass-edge-top: rgba(255, 255, 255, 0.15);
   --glass-blur: 8px;
@@ -510,18 +427,34 @@ img {
   --glass-dialog-saturate: 180%;
 }
 
+/*
+ * The tab bar and History's segmented control: iOS 26 glass. #1D1D1D over black on the real
+ * terminal, with a bright rim that fades over the first two points, and the rows scrolling
+ * behind it visible through the blur rather than cut off by a black band.
+ */
 .floating-nav {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-edge);
-  border-top: 1px solid var(--glass-edge-top);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
-  /* saturate(100%) is a no-op, and the minifier rewrites it to the argument-less
-     saturate() form, which not every WebKit build parses -- an unparsed function would
-     invalidate the whole declaration and drop the blur. */
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
+  background: rgba(30, 30, 30, 0.74);
+  box-shadow:
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0.5px rgba(255, 255, 255, 0.12),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
+    0 8px 28px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
   -webkit-transform: translate3d(0, 0, 0);
   transform: translate3d(0, 0, 0);
+}
+
+/* The whole bar swells a touch while the lens is out, as the real one does. */
+.floating-nav.is-hopping {
+  animation: nav-bar-swell 420ms cubic-bezier(0.3, 0.7, 0.2, 1) both;
+}
+
+@keyframes nav-bar-swell {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  25% { transform: translate3d(0, 0, 0) scale(1.022); }
+  70% { transform: translate3d(0, 0, 0) scale(1.012); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 
 /*
@@ -593,29 +526,29 @@ img {
 
 .floating-nav-item {
   color: #ffffff;
-  transition: color 180ms ease;
+  transition: color 160ms ease;
 }
 
-/* Tint lands with the pill rather than ahead of it, so the blue never arrives at an
-   empty slot. Leaving a tab still fades out immediately (no delay on the base rule). */
+/* Lands with the pill rather than ahead of it, so the blue never arrives at an empty slot. */
 .floating-nav-item.active {
   color: #0A84FF;
-  transition: color 200ms ease 160ms;
+  transition: color 160ms ease 120ms;
+}
+
+/* History's segmented control keeps its selected label white; only the pill marks it. */
+.floating-nav-item.active.is-plain {
+  color: #ffffff;
 }
 
 /*
- * Shared selection pill.
+ * The selection pill. The outer element owns position and slides on a spring that overshoots
+ * a little and settles; the inner surface owns the costume.
  *
- * The outer element owns position -- it translates from the outgoing tab's box to the
- * incoming one on the iOS "decelerate hard, no bounce" curve. The inner surface owns
- * the costume change: it peels off the bar and, for the length of the trip, becomes a
- * miniature of .floating-nav itself -- same smoked fill, same 8px backdrop blur, same
- * drop shadow, with the hairline dialled fainter so it reads as a detached shard of
- * the bar rather than a second bar. On arrival it drops that costume and goes back to
- * the flat white wash it wears at rest.
- *
- * Splitting position and costume across two elements lets a transition and a keyframe
- * animation both drive transform without fighting over the property.
+ * At rest the costume is a dark capsule (#0C0C0C on the real terminal), wider than its slot so a
+ * long label sits inside it. In flight it becomes a clear drop of glass: lifted, scaled past the
+ * bar's edges, rimmed in light with faint blue/amber fringes, and magnifying the bar beneath it
+ * (the `.floating-nav-lens` copy). Measured off the real bar: lift ~60ms, travel ~120ms, settle
+ * back to dark by ~350-420ms.
  */
 .floating-nav-pill {
   position: absolute;
@@ -628,90 +561,110 @@ img {
 
 .floating-nav-pill.is-animated {
   transition:
-    transform 420ms cubic-bezier(0.32, 0.72, 0, 1),
-    width 420ms cubic-bezier(0.32, 0.72, 0, 1);
+    transform 380ms cubic-bezier(0.34, 1.36, 0.5, 1),
+    width 380ms cubic-bezier(0.34, 1.36, 0.5, 1);
 }
 
 .floating-nav-pill-surface {
   position: absolute;
   inset: 0;
+  overflow: hidden;
   border-radius: 9999px;
-  background-color: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0);
-  box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
-  /* Identity blur at rest keeps the compositing layer alive, so the first frame of the
-     lift doesn't pay for creating a backdrop root mid-animation. */
-  -webkit-backdrop-filter: blur(0px);
-  backdrop-filter: blur(0px);
-  will-change: transform, backdrop-filter;
+  background-color: rgba(0, 0, 0, 0.62);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0);
   -webkit-transform: translate3d(0, 0, 0);
   transform: translate3d(0, 0, 0);
+  will-change: transform;
 }
 
 .floating-nav-pill-surface.travelling {
-  animation: nav-pill-lift 420ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: nav-pill-lens 420ms cubic-bezier(0.3, 0.7, 0.2, 1) both;
 }
 
-@keyframes nav-pill-lift {
+@keyframes nav-pill-lens {
   0% {
     transform: translate3d(0, 0, 0) scale(1);
-    background-color: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0);
-    border-top-color: rgba(255, 255, 255, 0);
-    -webkit-backdrop-filter: blur(0px);
-    backdrop-filter: blur(0px);
-    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+    background-color: rgba(0, 0, 0, 0.62);
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0);
   }
-
-  22% {
-    /* Costume fully on, well before the pill has covered much ground -- it lifts first,
-       then travels. 1.2x is what sells the detachment: at 56px tall inside a ~58px bar
-       it breaks past both edges, so you see glass over the page, not glass over glass. */
-    transform: translate3d(0, -2px, 0) scale(1.2);
-    background-color: rgba(28, 28, 30, 0.55);
-    border-color: rgba(255, 255, 255, 0.05);
-    border-top-color: rgba(255, 255, 255, 0.1);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+  16% {
+    transform: translate3d(0, -1px, 0) scale(1.12, 1.18);
+    background-color: rgba(38, 38, 40, 0.96);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.35),
+      inset 3px 0 4px rgba(90, 170, 255, 0.28),
+      inset -3px 0 4px rgba(255, 160, 70, 0.22),
+      0 6px 18px rgba(0, 0, 0, 0.45);
   }
-
   62% {
-    /* Held, unchanged, through the cruise -- the whole trip is spent as bar-glass. */
-    transform: translate3d(0, -2px, 0) scale(1.2);
-    background-color: rgba(28, 28, 30, 0.55);
-    border-color: rgba(255, 255, 255, 0.05);
-    border-top-color: rgba(255, 255, 255, 0.1);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+    transform: translate3d(0, -1px, 0) scale(1.1, 1.15);
+    background-color: rgba(38, 38, 40, 0.96);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+      inset 0 1.5px 1px rgba(255, 255, 255, 0.3),
+      inset 3px 0 4px rgba(90, 170, 255, 0.24),
+      inset -3px 0 4px rgba(255, 160, 70, 0.18),
+      0 6px 18px rgba(0, 0, 0, 0.4);
   }
-
   100% {
     transform: translate3d(0, 0, 0) scale(1);
-    background-color: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0);
-    border-top-color: rgba(255, 255, 255, 0);
-    -webkit-backdrop-filter: blur(0px);
-    backdrop-filter: blur(0px);
-    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+    background-color: rgba(0, 0, 0, 0.62);
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0);
   }
+}
+
+/* The magnified bar inside the lens. Invisible at rest, so the real items show through. */
+.floating-nav-lens {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(1.08);
+  transform-origin: center;
+}
+
+.travelling > .floating-nav-lens {
+  animation: nav-lens-content 420ms ease both;
+}
+
+@keyframes nav-lens-content {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  66% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.floating-nav-lens-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: var(--nav-bar-height);
+  display: flex;
+}
+
+.floating-nav-pill.is-animated .floating-nav-lens-track {
+  transition: transform 380ms cubic-bezier(0.34, 1.36, 0.5, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .floating-nav-pill.is-animated {
+  .floating-nav-pill.is-animated,
+  .floating-nav-pill.is-animated .floating-nav-lens-track {
     transition: none;
   }
 
-  .floating-nav-pill-surface.travelling {
+  .floating-nav-pill-surface.travelling,
+  .travelling > .floating-nav-lens,
+  .floating-nav.is-hopping {
     animation: none;
   }
 }
 
+/* SF Pro 10pt medium, as the system tab bar. */
 .floating-nav-caption {
   font-size: 10px;
-  line-height: 1;
+  line-height: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 /*
@@ -824,57 +777,72 @@ img {
  * to. One declaration, two names — the two end up touching each other, and nothing looks more
  * like a mistake than two slightly different kinds of glass sharing an edge.
  */
-.view-header,
-.sticky-bar {
-  -webkit-backdrop-filter: blur(1.2px) saturate(150%);
-  backdrop-filter: blur(1.2px) saturate(150%);
+/*
+ * Measured off the real terminal (iOS 26 scroll-edge effects):
+ *
+ *   hard  at rest the bar is plain black; with content under it, a frosted #121214-ish fill and
+ *         a #323234 hairline fade in. Settings, Trade, Quotes.
+ *   soft  no bar, ever. Content darkens and blurs progressively towards the top behind the
+ *         floating controls. History.
+ *
+ * The material is a pseudo-element so it can fade with opacity while the controls on the bar
+ * stay at full strength. The header is `absolute z-30`, so it is its own stacking context and
+ * `z-index: -1` keeps the material under its children rather than under the page.
+ */
+.view-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.view-header[data-edge='hard']::before {
+  background-color: rgba(14, 14, 16, 0.8);
+  border-bottom: 0.5px solid #323234;
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+.view-header[data-edge='hard'][data-scrolled]::before {
+  opacity: 1;
+}
+
+/* Blur only, no darkening: a dark fill here read as the header's own text being eaten away. */
+.view-header[data-edge='soft']::before {
+  opacity: 1;
+  bottom: -16px;
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
 }
 
 /*
- * The same bar, filled.
- *
- * Trade and History both put a lot of small numbers directly over a scrolling list, and 1.2px
- * of blur does not separate a price under the bar from a price in it — the two read as one
- * column of figures at a glance. These two screens take a near-opaque black under the filter
- * instead: the glass is still glass (the buttons and the segmented pill are unchanged, and
- * they still sample and lift what is behind them), but the bar they sit on is a bar.
- *
- * Not on `.view-header` itself, because Quotes and Settings have nothing under their headers
- * worth hiding and the blur alone is the better surface there.
- *
- * `.sticky-bar` is included unconditionally: it exists only on Trade, and it shares an edge
- * with the header above it, so it has to be the same fill or the seam shows.
+ * The open -> current price line under a position or deal ("4041.291 -> 4060.977") and the
+ * deal's date. Not SF: the real terminal sets these in Helvetica Neue -- 0.556em digits (29px
+ * advance at 17pt on a 3x screen, against SF's 31px) and a long, thin arrow with a small head.
+ * Arial stands in off Apple devices.
  */
-.view-header-solid,
+.mt5-price-line {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+/* Trade's "Positions" bar: a flat band, #070707 on the real terminal, scrolled or not. */
 .sticky-bar {
-  background-color: rgba(0, 0, 0, 0.86);
+  background-color: #070707;
 }
 
 /*
- * The instrument code, condensed to 80% of its width.
- *
- * `XAUUSDm`, `EURUSDm`, `USDJPYm` — seven or eight capitals in semibold, and they open every row
- * on Trade, History and the chart's OHLC line. Narrowing them is what gives the side, the volume
- * and the P/L beside them room; at full width the longer codes crowd whatever follows.
- *
- * ── Why this is not `transform: scaleX(0.8)` ─────────────────────────
- *
- * Because a transform is applied *after* layout. The glyphs would look squeezed and the box they
- * sit in would stay exactly as wide, so the neighbours would gain a bigger gap rather than any
- * actual space — which is the half of this that matters.
- *
- * Shrinking the font instead makes the box genuinely 80% as wide, and the compensating
- * `scaleY(1.25)` puts the height back. The composite is identical to a horizontal squash,
- * stroke weights included — vertical stems end up 0.8, horizontals 0.8 x 1.25 = unchanged —
- * except that the row around it actually reflows. `tracking-tight` is in `em`, so the letter
- * spacing condenses with it rather than staying at its old absolute value.
- *
- * The default 50% 50% origin is deliberate: every row using this centres its items, so growing
- * the glyph symmetrically about the middle of its shorter box lands it back on the same optical
- * centre line as the text beside it.
+ * MT5's second face: symbols, sides and volumes, P/L, the big quote digits, the header total,
+ * "Positions", timeframes. Roboto Condensed, self-hosted (app/layout.tsx), weight and tracking
+ * matched to the real terminal's glyphs. Never scaled or stretched: the face is drawn narrow.
  */
-.symbol-condensed {
-  display: inline-block;
-  font-size: 0.8em;
-  transform: scaleY(1.25);
+.mt5-cond {
+  font-family: var(--font-mt5-condensed), "Roboto Condensed", system-ui, sans-serif;
+  font-weight: 470;
+  letter-spacing: -0.012em;
+  font-variant-numeric: normal;
 }

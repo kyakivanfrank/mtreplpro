@@ -100,18 +100,14 @@ function clampSpeed(speed: number): number {
 }
 
 /**
- * How often the clock is advanced and prices are emitted. Four times a second reads as live,
- * and sits inside the one-to-five prints a second a real major puts out.
+ * How often the clock is advanced and checked for new prints.
  *
- * Deliberately not raised alongside the speed. Printing more often does not make the market
- * move faster, it only splits the same movement into smaller pieces — the thing that was
- * being mistaken for speed in the first place.
- *
- * Frames are elapsed-driven rather than counted, so they land at uneven offsets — which is
- * why the tick slots below do not divide evenly into this: a slot boundary the frames miss is
- * free irregularity in the cadence.
+ * A polling rate, not a tick rate. Prints arrive on their own irregular schedule (see
+ * `lastTickSlot`), and a frame only emits for a symbol whose latest print changed since the last
+ * one sent, so a quiet symbol stays quiet for seconds and a busy one fires several frames in a
+ * row. 20Hz is fine enough that a burst reads as a burst rather than as one coalesced jump.
  */
-const FRAME_MS = 250;
+const FRAME_MS = 50;
 
 /**
  * Where the window starts by default: this far behind the newest bar held.
@@ -254,17 +250,31 @@ function priceIn(bar: Candle, fraction: number, inset = 0): number {
  */
 
 /**
- * Session-ms per tick slot, scaled by the speed so a slot is a constant slice of *wall* time.
- *
- * Without the scaling the texture is a function of session time, so tripling the clock would
- * triple how fast it flickers and turn the wander into a buzz. Multiplying by the speed keeps
- * it deterministic — it is still a pure function of `clockMs` and a constant — while pinning
- * the flicker to what the eye actually sees.
+ * Session-ms per tick slot: 40ms of wall time at normal speed. Each slot either holds a print or
+ * does not (see `hasTick`). Scaled by `PLAYBACK_SPEED` so the rhythm the eye sees does not change
+ * with the clock's base rate.
  */
-const TICK_SLOT_MS = 200 * PLAYBACK_SPEED;
+const TICK_SLOT_WALL_MS = 40;
+const TICK_SLOT_MS = TICK_SLOT_WALL_MS * PLAYBACK_SPEED;
 
 /** Slots per drift turn — roughly 1.2s of wander. */
-const DRIFT_SLOTS = 6;
+const DRIFT_SLOTS = 30;
+
+/*
+ * When prints happen.
+ *
+ * Real tape is not a metronome: it sits for a second or two, fires five prints in a few hundred
+ * milliseconds, then dribbles. Modelled as a slowly wandering activity level (two layers of value
+ * noise, ~4s and ~15s) driving the odds that any one slot holds a print, from about 0.4 prints a
+ * second in a lull to about 12 in a burst. Hashed from the clock like the texture, so the schedule
+ * is as exactly repeatable as the prices.
+ */
+const MIN_TICK_RATE = 0.4;
+const MAX_TICK_RATE = 12;
+const ACTIVITY_FAST_SLOTS = 100;
+const ACTIVITY_SLOW_SLOTS = 375;
+/** Far enough back to find the last print even in the deepest lull (~16s at normal speed). */
+const MAX_TICK_LOOKBACK = 400;
 
 /**
  * Split between the slow wander and the per-print flicker, weighted toward the flicker.
@@ -337,16 +347,35 @@ function textureWidth(bar: Candle, point: number): number {
   return Math.max(TEXTURE_FLOOR_POINTS * point, (bar.high - bar.low) * TEXTURE_OF_RANGE);
 }
 
-function tickTexture(symbol: string, clockMs: number, width: number): number {
+function tickTexture(symbol: string, slot: number, width: number): number {
   if (width <= 0) return 0;
 
   const seed = symbolSeed(symbol);
-  const slot = clockMs / TICK_SLOT_MS;
-
   const drift = smoothNoise(seed ^ 0x9e3779b9, slot / DRIFT_SLOTS);
-  const flick = noise(seed, Math.floor(slot));
+  const flick = noise(seed, slot);
 
   return (drift * DRIFT_SHARE + flick * FLICK_SHARE) * width;
+}
+
+/** Whether slot `k` holds a print for this symbol. */
+function hasTick(seed: number, k: number): boolean {
+  const fast = smoothNoise(seed ^ 0x51ed270b, k / ACTIVITY_FAST_SLOTS);
+  const slow = smoothNoise(seed ^ 0x2545f491, k / ACTIVITY_SLOW_SLOTS);
+  const level = Math.min(1, Math.max(0, 0.5 + 0.5 * (0.65 * fast + 0.35 * slow)));
+  // Squared so lulls are common and bursts are events, as on a real feed.
+  const rate = MIN_TICK_RATE + (MAX_TICK_RATE - MIN_TICK_RATE) * level * level;
+  const chance = 1 - Math.exp((-rate * TICK_SLOT_WALL_MS) / 1000);
+  return (noise(seed ^ 0x68e31da4, k) + 1) / 2 < chance;
+}
+
+/** The slot of the most recent print at or before `clockMs`. */
+function lastTickSlot(symbol: string, clockMs: number): number {
+  const seed = symbolSeed(symbol);
+  const k0 = Math.floor(clockMs / TICK_SLOT_MS);
+  for (let k = k0; k > k0 - MAX_TICK_LOOKBACK; k -= 1) {
+    if (hasTick(seed, k)) return k;
+  }
+  return k0 - MAX_TICK_LOOKBACK;
 }
 
 /* ------------------------------------------------------------------ */
@@ -369,10 +398,23 @@ function tickTexture(symbol: string, clockMs: number, width: number): number {
  * Returns `null` for a symbol with no bar covering that moment.
  */
 export function priceAtClock(symbol: string, clockMs: number): { bid: number; ask: number } | null {
-  // Whole seconds for the *lookup* — bars are bucketed per minute. The position inside the bar
-  // is taken from the raw clock instead: flooring it there was what made the quote step once a
-  // second and hold for four frames, so the tape counted rather than ticked.
-  const at = barAt(symbol, Math.floor(clockMs / 1000));
+  const print = tickAtClock(symbol, clockMs);
+  return print && { bid: print.bid, ask: print.ask };
+}
+
+/**
+ * The last print at or before `clockMs`: its price, and the moment it was printed.
+ *
+ * The quote only changes at prints and holds in between, which is what makes the tape irregular.
+ * The print is stamped with its own moment, so one from the last second of a minute still lands
+ * in that minute's candle even when the frame that noticed it fell in the next.
+ */
+export function tickAtClock(symbol: string, clockMs: number): { bid: number; ask: number; time: number } | null {
+  const slot = lastTickSlot(symbol, clockMs);
+  const time = Math.max(0, slot * TICK_SLOT_MS);
+
+  // Whole seconds for the *lookup* — bars are bucketed per minute.
+  const at = barAt(symbol, Math.floor(time / 1000));
   if (!at) return null;
 
   const instrument = findInstrument(symbol);
@@ -381,9 +423,9 @@ export function priceAtClock(symbol: string, clockMs: number): { bid: number; as
 
   // Outside a covered minute the price is simply the last one printed — a closed market does
   // not drift.
-  if (!at.covers) return { bid: at.bar.close, ask: at.bar.close + spread };
+  if (!at.covers) return { bid: at.bar.close, ask: at.bar.close + spread, time };
 
-  const fraction = (clockMs / 1000 - at.bar.time) / 60;
+  const fraction = (time / 1000 - at.bar.time) / 60;
 
   // Never more than a third of the bar: on a very tight minute an inset the full width of the
   // texture would invert the turn points and run the ramp backwards.
@@ -391,26 +433,18 @@ export function priceAtClock(symbol: string, clockMs: number): { bid: number; as
   const inset = Math.min(width, (at.bar.high - at.bar.low) / 3);
 
   const ramp = priceIn(at.bar, fraction, inset);
-  const offset = tickTexture(symbol, clockMs, width);
+  const offset = tickTexture(symbol, slot, width);
 
-  // The bar's own extremes are the envelope, and staying inside is not cosmetic: the forming
-  // candle on the chart is built from these ticks, so a print past the archived high or low
-  // would draw a wick that vanishes the next time the series re-seeds.
-  //
-  // Squeezed toward the edge rather than cut off at it. A hard clamp parks the quote on the
-  // extreme for as long as the texture points that way -- which showed up as runs of six or
-  // seven identical prints exactly where the ramp is nearest a wick, the frozen look this is
-  // meant to cure. Soft-clipping instead just shrinks the texture as room runs out, which is
-  // also what a real bar does: prints thin out near its extreme because that extreme is, by
-  // definition, as far as any tick got.
+  // The bar's own extremes are the envelope: the forming candle is built from these prints, so
+  // one past the archived high or low would draw a wick that vanishes on the next re-seed.
+  // Soft-clipped rather than clamped, so the quote thins out near an extreme instead of parking
+  // on it.
   const room = offset >= 0 ? at.bar.high - ramp : ramp - at.bar.low;
   const held = ramp + (room > 0 ? (offset * room) / (room + Math.abs(offset)) : 0);
 
-  // Land on a real increment. A quote carrying float dust below the last displayed digit reads
-  // as continuous drift; snapping to the point is what makes a print a *tick*, and is what lets
-  // two adjacent frames legitimately show the same price.
+  // Land on a real increment, so a print is a *tick* and two prints can share a price.
   const bid = Math.round(held / point) * point;
-  return { bid, ask: bid + spread };
+  return { bid, ask: bid + spread, time };
 }
 
 export class PlaybackSession {
@@ -422,6 +456,8 @@ export class PlaybackSession {
   private lastPersist = 0;
   /** Set when the clock stopped only because it ran out of tape, never by a user pause. */
   private autoResume = false;
+  /** The moment of the last print sent per symbol, so a frame emits only new prints. */
+  private lastPrint = new Map<string, number>();
 
   private onTick: TickHandler;
   private options: PlaybackOptions;
@@ -474,7 +510,7 @@ export class PlaybackSession {
         ready: true,
       });
       this.options.onSeek?.(this.state.clockMs);
-      this.emitAll();
+      this.emitAll(true);
       // Anything but an explicit pause resumes. `playing` is absent in sessions stored before
       // this existed, and those should start moving too.
       if (stored.playing !== false) this.play();
@@ -491,7 +527,7 @@ export class PlaybackSession {
       ready: true,
     });
     this.options.onSeek?.(startMs);
-    this.emitAll();
+    this.emitAll(true);
     this.play();
   }
 
@@ -580,7 +616,7 @@ export class PlaybackSession {
 
     this.patch({ clockMs: target });
     this.options.onSeek?.(target);
-    this.emitAll();
+    this.emitAll(true);
     this.persist();
   }
 
@@ -604,7 +640,7 @@ export class PlaybackSession {
 
     this.patch({ startMs: start, clockMs: start });
     this.options.onSeek?.(start);
-    this.emitAll();
+    this.emitAll(true);
     this.persist();
   }
 
@@ -666,7 +702,7 @@ export class PlaybackSession {
         // session left open simply carries on when the terminal catches up.
         this.patch({ clockMs: this.state.endMs });
         if (jumped > 0) this.options.onSeek?.(this.state.endMs);
-        this.emitAll();
+        this.emitAll(jumped > 0);
         this.autoResume = true;
         this.pause();
         return;
@@ -678,7 +714,7 @@ export class PlaybackSession {
       // now reads, and announcing the jump early would rebuild them at the moment just left.
       if (jumped > 0) this.options.onSeek?.(next);
 
-      this.emitAll();
+      this.emitAll(jumped > 0);
       clock = next;
 
       // A weekend crossed ends the frame. The rest of its budget would otherwise be spent
@@ -718,18 +754,24 @@ export class PlaybackSession {
     return earliestNext * 1000;
   }
 
-  /** One price per symbol at the current clock. */
-  private emitAll(): void {
+  /**
+   * The latest print per symbol, for symbols that printed since the last emission.
+   *
+   * `force` re-sends every symbol, for a seek: the clock moved somewhere else and every board has
+   * to show where it landed. The arithmetic lives in `tickAtClock` so that the autotrader's
+   * lookahead and the tape the user is watching cannot come apart.
+   */
+  private emitAll(force = false): void {
     const clockMs = this.state.clockMs;
     if (!clockMs) return;
 
-    // The arithmetic lives in `priceAtClock` so that the autotrader's lookahead and the tape
-    // the user is watching cannot come apart. See there.
     for (const symbol of this.symbols) {
-      const price = priceAtClock(symbol, clockMs);
-      if (!price) continue;
+      const print = tickAtClock(symbol, clockMs);
+      if (!print) continue;
+      if (!force && this.lastPrint.get(symbol) === print.time) continue;
+      this.lastPrint.set(symbol, print.time);
 
-      const tick: Tick = { symbol, bid: price.bid, ask: price.ask, time: clockMs };
+      const tick: Tick = { symbol, bid: print.bid, ask: print.ask, time: print.time };
       this.onTick(tick);
     }
   }

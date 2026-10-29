@@ -9,13 +9,13 @@ import type { PriceCell } from '@/components/quotes/quoteItemProps';
  */
 export default function PriceColumn({ cell, footer }: { cell: PriceCell; footer: string }) {
   return (
-    <div className="flex flex-col items-end min-w-[85px] whitespace-nowrap">
-      <div className={`flex items-baseline ${cell.color} font-medium tracking-tighter`}>
-        <span className="text-[17px]">{cell.prefix}</span>
-        <span className="text-[28px] leading-none">{cell.big}</span>
-        <span className="text-[14px] relative -top-[10px]">{cell.sup}</span>
+    <div className="flex flex-col items-end whitespace-nowrap">
+      <div className={`mt5-cond flex items-baseline ${cell.color}`}>
+        <span className="text-[18px]">{cell.prefix}</span>
+        <span className="text-[31px] leading-none">{cell.big}</span>
+        <span className="text-[14px] relative -top-[13px]">{cell.sup}</span>
       </div>
-      <div className="text-[12px] text-muted mt-0.5 font-mono tracking-tighter">{footer}</div>
+      <div className="text-[13.5px] leading-[20px] text-quiet mt-0.5">{footer}</div>
     </div>
   );
 }

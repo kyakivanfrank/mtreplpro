@@ -50,7 +50,7 @@ export default function QuoteItem({
     onClick?.();
   };
 
-  // The selected tint sits just above the noise floor — legible if you look for it, invisible if you don't.
+  // Selection is the terminal's blue corner flag, not a row tint.
   return (
     <div
       onClick={handleClick}
@@ -60,21 +60,24 @@ export default function QuoteItem({
       onPointerCancel={cancelPress}
       onContextMenu={(e) => e.preventDefault()}
       style={{ touchAction: 'pan-y', WebkitTouchCallout: 'none', userSelect: 'none' }}
-      className={`flex justify-between items-center py-2.5 -mx-4 px-4 cursor-pointer transition-colors ${selected ? 'bg-white/[0.012]' : 'active:bg-white/5'}`}
+      className="relative flex justify-between items-center py-[7px] px-3 cursor-pointer transition-colors active:bg-white/5"
     >
+      {selected && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-0 w-[10px] h-[10px] bg-accent"
+          style={{ clipPath: 'polygon(0 0, 100% 0, 0 100%)' }}
+        />
+      )}
+
       {/* Left Column */}
       <div className="flex flex-col flex-1 min-w-[100px]">
-        <div className="flex items-center gap-2 text-[12px] font-semibold font-mono tracking-tighter">
-          <span className="text-muted">{pts}</span>
+        <div className="flex items-center gap-[5px] text-[13.5px] leading-[20px]">
+          <span className="text-quiet">{pts}</span>
           <span className={changeColor}>{pct}</span>
         </div>
-        {/* Condensed in a span of its own rather than on this line box: as a flex item the div
-            would blockify the class's `inline-block` away, and the shrink-to-fit width is the
-            half of it that hands the space back. See `.symbol-condensed`. */}
-        <div className="font-semibold text-[18px] text-white leading-tight mt-0.5 mb-1">
-          <span className="symbol-condensed">{symbol}</span>
-        </div>
-        <div className="flex items-center gap-1 text-[12px] text-muted font-mono tracking-tighter">
+        <div className="mt5-cond text-[18px] leading-[22px] text-white">{symbol}</div>
+        <div className="flex items-center gap-1 text-[14px] leading-[20px] text-quiet">
           <span>{time}</span>
           <SpreadIcon />
           <span>{spread}</span>
@@ -82,7 +85,7 @@ export default function QuoteItem({
       </div>
 
       {/* Right Columns (Bid / Ask) */}
-      <div className="flex gap-4 text-right">
+      <div className="flex gap-[18px] text-right">
         <PriceColumn cell={bid} footer={`L: ${low}`} />
         <PriceColumn cell={ask} footer={`H: ${high}`} />
       </div>

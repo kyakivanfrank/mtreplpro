@@ -72,6 +72,14 @@ export default function Home() {
         {activeTab === 'chart' && <ChartView symbol={normalizeSymbol(chartSymbol)} />}
       </div>
 
+      {/*
+        iOS 26 draws a Liquid Glass blur ~40pt down from the top of an installed web app, over
+        whatever is there -- it was softening every header title and button. WebKit skips it
+        when a fixed, full-width box at the top edge paints one solid colour, so this band
+        (black, as the real terminal's status area is) is that box.
+      */}
+      <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-[55] h-[var(--safe-top)] bg-black" />
+
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   );

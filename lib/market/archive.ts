@@ -48,7 +48,8 @@ import type { Candle, TimeframeKey } from './types';
  */
 const MINUTES_PER_DAY = 1_440;
 
-const DEFAULT_CANDLES = 25 * MINUTES_PER_DAY;
+// Only used until `/api/mt5/meta` answers; the seeder's `candles` setting is the real value.
+const DEFAULT_CANDLES = 60_000;
 
 /** Set from `mt5:meta` as soon as the catalogue lands; the default only covers the gap. */
 let publishedCandles = DEFAULT_CANDLES;
@@ -70,20 +71,6 @@ export function archiveCandles(): number {
  */
 export function archiveDays(): number {
   return Math.round(publishedCandles / MINUTES_PER_DAY);
-}
-
-/**
- * Ceiling on stored candles per symbol — and the whole trimming mechanism.
- *
- * Exactly the published depth, not one candle more. That equality is what lets the two ends
- * agree without exchanging anything: the publisher counts the newest `n` candles it holds,
- * this device keeps the newest `n` candles it holds, and since they are the same series the
- * per-day counts come out identical on both sides. So the day the queue starts inside needs
- * no floor, no boundary timestamp and no re-download as candles pop off it — the cap alone
- * lands on the same number the manifest already says.
- */
-export function archiveBars(): number {
-  return publishedCandles;
 }
 
 export interface M1Archive {
@@ -259,44 +246,6 @@ export function barAt(
 }
 
 /**
- * How many bars of a timeframe actually sit inside a window.
- *
- * Counted from the minutes held, not derived from elapsed time, because those are different
- * numbers and the difference is the whole point: four hours across a Friday night is four
- * hours of clock and no bars at all. Sizing a tradable window off the calendar would promise
- * a session that mostly is not there.
- */
-export function countBars(
-  symbol: string,
-  fromSeconds: number,
-  toSeconds: number,
-  tfSeconds: number
-): number {
-  const archive = memory.get(symbol);
-  if (!archive || archive.t.length === 0) return 0;
-
-  const end = indexAtOrBefore(archive.t, toSeconds);
-  if (end < 0) return 0;
-
-  const start = indexAtOrBefore(archive.t, fromSeconds - 1) + 1;
-  if (start > end) return 0;
-
-  if (tfSeconds <= 60) return end - start + 1;
-
-  let bars = 0;
-  let bucket = -1;
-  for (let i = start; i <= end; i++) {
-    const slot = Math.floor(archive.t[i] / tfSeconds);
-    if (slot !== bucket) {
-      bucket = slot;
-      bars++;
-    }
-  }
-
-  return bars;
-}
-
-/**
  * The next minute at or after `seconds`, or 0 when the archive ends first.
  *
  * This is what makes a weekend cost nothing. The clock runs at wall-clock rate, so a Friday to
@@ -389,7 +338,9 @@ export async function applyCsv(
   // Pop the far end. The publisher counts the newest `capacity` candles of this same series,
   // so taking the newest `capacity` here lands on exactly the same set — which is what makes
   // the day counts below match the manifest without either side sending the other a boundary.
-  const capacity = archiveBars();
+  // Exactly the published depth: the publisher keeps its newest N candles and so does this
+  // device, so both sides arrive at the same per-day counts without exchanging anything.
+  const capacity = archiveCandles();
   const times = Array.from(merged.keys()).sort((a, b) => a - b);
   const kept = times.length > capacity ? times.slice(times.length - capacity) : times;
   const n = kept.length;

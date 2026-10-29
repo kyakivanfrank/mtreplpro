@@ -2,10 +2,11 @@
 
 import React from 'react';
 import ViewLayout from '@/components/ui/ViewLayout';
+import ListBulletIcon from '@/components/icons/ListBullet';
 import PencilIcon from '@/components/icons/Pencil';
+import SearchIcon from '@/components/icons/Search';
 import SymbolPickerModal from '@/components/quotes/SymbolPickerModal';
 import QuoteItem from '@/components/quotes/parts/QuoteItem';
-import QuotesSearchBar from '@/components/quotes/parts/QuotesSearchBar';
 import { placeholder, toItemProps } from '@/components/quotes/quoteItemProps';
 import { useWatchlist } from '@/components/quotes/useWatchlist';
 import { useBrokerSymbol } from '@/lib/account';
@@ -32,15 +33,32 @@ export default function QuotesView({ onOpenChart }: QuotesViewProps) {
     <>
       <ViewLayout
         headerLeft={
-          <div className="w-[52px] h-[52px] flex items-center justify-start cursor-pointer">
-            <PencilIcon className="w-[26px] h-[26px] text-white" />
-          </div>
+          <button
+            type="button"
+            aria-label="View mode"
+            className="glass-control w-[44px] h-[44px] rounded-full flex items-center justify-center"
+          >
+            <ListBulletIcon className="w-[22px] h-[22px] text-white" />
+          </button>
         }
         headerCenter={<div className="font-semibold text-[17px]">Quotes</div>}
+        headerRight={
+          <div className="glass-control h-[44px] rounded-full flex items-center px-1">
+            <button type="button" aria-label="Edit" className="w-[46px] h-[44px] flex items-center justify-center">
+              <PencilIcon className="w-[21px] h-[21px]" />
+            </button>
+            <button
+              type="button"
+              aria-label="Search symbols"
+              onClick={() => openPicker(targetIndex)}
+              className="w-[46px] h-[44px] flex items-center justify-center"
+            >
+              <SearchIcon className="w-[22px] h-[22px] text-white" />
+            </button>
+          </div>
+        }
       >
-        <div className="px-4 pb-2">
-          <QuotesSearchBar onOpen={() => openPicker(targetIndex)} />
-
+        <div className="pb-2">
           <div className="flex flex-col">
             {rows.map((row, i) => {
               const quote = quotes[row.symbol];
@@ -63,7 +81,7 @@ export default function QuotesView({ onOpenChart }: QuotesViewProps) {
 
       <SymbolPickerModal
         open={pickerOpen}
-        targetDisplay={rows[targetIndex].display}
+        targetDisplay={rows[targetIndex]?.display ?? ''}
         usedSymbols={rows.map((r) => r.symbol)}
         onSelect={selectInstrument}
         onClose={closePicker}

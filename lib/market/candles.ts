@@ -37,9 +37,17 @@ export class CandleSeries {
     return this.bars.length;
   }
 
-  /** Oldest-first. The returned array is replaced, never mutated, so React can diff by reference. */
+  /**
+   * Oldest-first, and mutated in place by `applyTick`. Anything that hands the bars to React
+   * must take a copy (`snapshot()`), which the market store does once per frame.
+   */
   all(): Candle[] {
     return this.bars;
+  }
+
+  /** A copy that will not change underneath whoever holds it. */
+  snapshot(): Candle[] {
+    return this.bars.slice();
   }
 
   last(): Candle | undefined {
@@ -58,22 +66,20 @@ export class CandleSeries {
     if (current && slot < current.time) return 'stale';
 
     if (!current || slot > current.time) {
-      // Bars are copied on write so a held reference never mutates underneath React.
-      this.bars = [
-        ...this.bars,
-        { time: slot, open: tick.bid, high: tick.bid, low: tick.bid, close: tick.bid },
-      ].slice(-this.maxBars);
+      // In place: copying a 40,000-bar array on every tick was the hot path at high speed.
+      this.bars.push({ time: slot, open: tick.bid, high: tick.bid, low: tick.bid, close: tick.bid });
+      if (this.bars.length > this.maxBars) this.bars.splice(0, this.bars.length - this.maxBars);
       return 'new';
     }
 
-    const updated: Candle = {
+    // A new object for the forming bar, so a previous snapshot's last bar keeps its values.
+    this.bars[this.bars.length - 1] = {
       time: current.time,
       open: current.open,
       high: Math.max(current.high, tick.bid),
       low: Math.min(current.low, tick.bid),
       close: tick.bid,
     };
-    this.bars = [...this.bars.slice(0, -1), updated];
     return 'update';
   }
 }

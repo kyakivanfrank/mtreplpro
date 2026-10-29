@@ -1,6 +1,6 @@
 import React from 'react';
 import SummaryRow from '@/components/ui/SummaryRow';
-import { money } from '@/lib/money';
+import { groupedMoney } from '@/lib/money';
 import type { accountSummary } from '@/lib/trading/math';
 
 /**
@@ -20,18 +20,15 @@ export default function AccountSummary({
   holding: boolean;
 }) {
   return (
-    <div className="px-1.5">
-      <SummaryRow variant="trade" label="Balance:" value={money(summary.balance)} />
-      <SummaryRow variant="trade" label="Equity:" value={money(summary.equity)} />
-      {summary.margin > 0 && (
-        <SummaryRow variant="trade" label="Margin:" value={money(summary.margin)} />
-      )}
-      <SummaryRow variant="trade" label="Free Margin:" value={money(summary.freeMargin)} />
+    <div className="px-4 pb-1.5">
+      <SummaryRow label="Balance:" value={groupedMoney(summary.balance)} />
+      <SummaryRow label="Equity:" value={groupedMoney(summary.equity)} />
+      {summary.margin > 0 && <SummaryRow label="Margin:" value={groupedMoney(summary.margin)} />}
+      <SummaryRow label="Free Margin:" value={groupedMoney(summary.freeMargin)} />
       {holding && (
         <SummaryRow
-          variant="trade"
           label="Margin Level (%):"
-          value={summary.marginLevel === null ? '∞' : money(summary.marginLevel)}
+          value={summary.marginLevel === null ? '∞' : groupedMoney(summary.marginLevel)}
         />
       )}
     </div>

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ViewLayout from '@/components/ui/ViewLayout';
-import CenterDialog, { IN_EASE, IN_MS, OUT_EASE, OUT_MS } from '@/components/ui/CenterDialog';
+import CenterDialog from '@/components/ui/CenterDialog';
 import OrderTicketModal, { type LevelField } from '@/components/trade/OrderTicketModal';
 
 import LevelPicker from '@/components/chart/LevelPicker';
@@ -24,7 +24,6 @@ import {
   TimeframeButton,
   TimeframeStrip,
 } from '@/components/chart/parts/ChartToolbar';
-import { useCandleSeries } from '@/components/chart/useCandleSeries';
 import { useChartInstance } from '@/components/chart/useChartInstance';
 import {
   DEFAULT_CHART_SYMBOL,
@@ -53,14 +52,16 @@ import { useBook, useTrading } from '@/lib/trading/store';
 import { normalizeVolume } from '@/lib/trading/math';
 import { useAutoTrader } from '@/lib/trading/autotrader';
 import { planRewind } from '@/lib/trading/rewind';
+import { PROFIT_DOWN, PROFIT_UP } from '@/lib/trading/profit';
+import type { PriceMark } from '@/components/chart/engine/MT5Chart';
 
 export { DEFAULT_CHART_SYMBOL };
 
 /**
  * The chart screen.
  *
- * Arrangement and state only. The lightweight-charts instance and its coordinate bridge live in
- * `./useChartInstance`, the bar-pushing in `./useCandleSeries`, every constant and options
+ * Arrangement and state only. The canvas engine is `./engine/MT5Chart`, mounted and fed by
+ * `./useChartInstance`; every constant
  * object in `./chartConfig`, and each overlay, toolbar slot and drawer in `./parts`.
  */
 export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: string }) {
@@ -119,8 +120,6 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
   const [picked, setPicked] = useState<{ field: LevelField; price: number; seq: number } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  /** Bumped whenever the chart pans, zooms or takes new bars, to re-place the markers. */
-  const [coordRevision, setCoordRevision] = useState(0);
 
   const playback = usePlayback();
   const symbolState = useSymbolState(symbol);
@@ -227,37 +226,43 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
   const waiting = empty && (symbolState === 'downloading' || symbolState === 'queued');
   const blocked = empty && !waiting;
 
-  const { containerRef, chartRef, seriesRef, coords, corner, ohlc, setOhlc, panBars } =
-    useChartInstance(digits, candles);
+  /** Each open position on this chart, as a box on the price column at its open price. */
+  const marks = useMemo<PriceMark[]>(
+    () =>
+      book.positions
+        .filter((p) => p.symbol === symbol)
+        .map((p) => ({ price: p.openPrice, color: p.type === 'buy' ? PROFIT_UP : PROFIT_DOWN, style: 'outline' as const })),
+    [book.positions, symbol]
+  );
 
-  useCandleSeries({
-    chartRef,
-    seriesRef,
+  const chart = useChartInstance({
+    digits,
     candles,
-    timeframe: activeTimeframe.value,
     symbol,
+    timeframe: activeTimeframe.value,
     ghostAfter,
-    onOhlc: setOhlc,
+    bid: lastBid,
+    marks,
   });
+  const { containerRef, coords, corner, revision: coordRevision, panBars } = chart;
 
-  /* ---------- keep the dragged markers pinned while the chart moves ---------- */
+  /** The chart menu a tap raises, as on the terminal. */
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
-    if (!setupOpen) return;
+    if (chart.tapAt) setMenuOpen(true);
+  }, [chart.tapAt]);
 
-    const chart = chartRef.current;
-    if (!chart) return;
-
-    const bump = () => setCoordRevision((revision) => revision + 1);
-    chart.timeScale().subscribeVisibleLogicalRangeChange(bump);
-    bump(); // place them against the range as it stands right now
-
-    return () => chart.timeScale().unsubscribeVisibleLogicalRangeChange(bump);
-  }, [setupOpen, candles.length, chartRef]);
+  /** The OHLC readout: the crosshair's bar, or the seeker's while the window panel is out. */
+  const lastBar = candles.length ? candles[candles.length - 1] : null;
+  const ohlc = chart.crosshairBar ?? seekerBar ?? lastBar;
 
   /* ---------- trading ---------- */
+  // One timer at a time: a second message must not be cleared early by the first one's timer.
+  const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = useCallback((message: string) => {
     setToast(message);
-    setTimeout(() => setToast(null), 2000);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2000);
   }, []);
 
   const trade = (side: 'buy' | 'sell') => {
@@ -319,7 +324,12 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
         />
       }
       headerCenter={
-        <ChartTools autoRunning={autoTrader.running} autoHolding={autoTrader.phase === 'holding'} />
+        <ChartTools
+          autoRunning={autoTrader.running}
+          autoHolding={autoTrader.phase === 'holding'}
+          crosshairOn={chart.crosshairOn}
+          onToggleCrosshair={() => chart.setCrosshair(!chart.crosshairOn)}
+        />
       }
       headerRight={
         <ChartActions
@@ -340,12 +350,8 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
           />
         ) : null
       }
-      /*
-        A pixel more air above and below the icons than the `py-2` everything else uses. The
-        toolbar has no bar of its own — it floats on the chart — so its height is entirely its
-        padding, and the row read tight against the trade drawer sliding out from under it.
-      */
-      headerClassName="py-[9px] px-4 bg-transparent"
+      // Same 44pt row as every other header; the chart frame starts directly under it.
+      headerClassName="min-h-[44px] px-4 bg-transparent"
       /*
         Cleared for the pill, not for the nav's whole footprint. `--nav-total-height` includes the
         20px of air above the pill, which is there so a scrolling list can fade out. The chart
@@ -361,43 +367,16 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
       wrapperClassName="pb-[calc(var(--nav-gap-bottom)+var(--nav-pill-height)+0px)]"
       contentClassName="flex flex-col relative bg-black min-h-0 overflow-hidden"
     >
-      <QuickTradeBar
-        open={tradeBarOpen}
-        bid={formatBigPrice(lastBid)}
-        ask={formatBigPrice(lastAsk)}
-        hasBid={lastBid !== null}
-        hasAsk={lastAsk !== null}
-        symbol={symbol}
-        volume={tradeVolume}
-        onVolumeChange={setVolume}
-        onTrade={trade}
-      />
-
       {/* ===== Chart Area ===== */}
       <div className="flex-1 relative min-h-0 bg-black w-full">
-        {/*
-          The line the trade row leaves behind. With the row out, its own bottom border separates
-          the toolbar from the chart; rolled up there is nothing there and the icons sit on the
-          candles with no edge between them.
-
-          Absolutely positioned rather than a `border-t`, because a border would add its pixel to
-          the layout and shunt the whole chart down by one every time the row was hidden.
-        */}
-        <div
-          aria-hidden
-          className="absolute inset-x-0 top-0 h-px z-10 pointer-events-none bg-white/15"
-          style={{
-            opacity: tradeBarOpen ? 0 : 1,
-            transition: `opacity ${tradeBarOpen ? IN_MS : OUT_MS}ms ${tradeBarOpen ? IN_EASE : OUT_EASE}`,
-          }}
-        />
-
         <ChartInfoOverlay
           displaySymbol={displaySymbol}
           timeframeLabel={activeTimeframe.label}
           instrument={instrument}
           ohlc={ohlc}
-          showOhlc={setupOpen}
+          showOhlc={setupOpen || chart.crosshairOn}
+          hint={chart.crosshairOn ? 'Move crosshair or tap the chart to switch to a ruler' : undefined}
+          rightInset={corner.width}
           fmt={fmt}
         />
 
@@ -430,6 +409,7 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
           quote={quote}
           quotes={quotes}
           coords={coords}
+          rightInset={corner.width}
           digits={digits}
           revision={coordRevision}
           onMove={modifyPosition}
@@ -534,10 +514,77 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
           />
         )}
 
+        {/* The price column's long-press menu. */}
+        {chart.axisMenuAt && (
+          <>
+            <div className="absolute inset-0 z-[60]" onClick={chart.closeAxisMenu} aria-hidden />
+            <div
+              role="menu"
+              className="center-dialog-panel absolute z-[61] w-[190px] rounded-[16px] py-1 text-[15px] text-white"
+              style={{ right: corner.width + 6, top: Math.max(8, chart.axisMenuAt.y - 40) }}
+            >
+              <button
+                role="menuitem"
+                className="block w-full px-4 py-2.5 text-left active:bg-white/10"
+                onClick={() => {
+                  chart.resetVerticalScale();
+                  chart.closeAxisMenu();
+                }}
+              >
+                Reset vertical scale
+              </button>
+              <button
+                role="menuitem"
+                className="block w-full px-4 py-2.5 text-left active:bg-white/10"
+                onClick={() => {
+                  chart.toggleFreeMove();
+                  chart.closeAxisMenu();
+                }}
+              >
+                {chart.isFreeMove() ? '✓ ' : ''}Free chart movement
+              </button>
+            </div>
+          </>
+        )}
+
         {toast && <ChartToast message={toast} />}
+
+        <ChartCorner corner={corner} active={setupOpen} onHold={() => toggleMode('setup')} />
       </div>
 
-      <ChartCorner corner={corner} active={setupOpen} onHold={() => toggleMode('setup')} />
+      <QuickTradeBar
+        open={tradeBarOpen}
+        bid={formatBigPrice(lastBid)}
+        ask={formatBigPrice(lastAsk)}
+        hasBid={lastBid !== null}
+        hasAsk={lastAsk !== null}
+        rising={quote?.direction === 'up'}
+        symbol={symbol}
+        volume={tradeVolume}
+        onVolumeChange={setVolume}
+        onTrade={trade}
+      />
+
+      <CenterDialog
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        align="center"
+        title={`${displaySymbol}: ${instrument ? (instrument.quote ? `${instrument.base} vs ${instrument.quote}` : instrument.base) : displaySymbol}`}
+        actions={[
+          {
+            label: 'Trade',
+            color: '#FF453A',
+            onClick: () => {
+              setMenuOpen(false);
+              setTicketOpen(true);
+            },
+            closes: true,
+          },
+          { label: 'Indicators' },
+          { label: 'Objects' },
+          { label: 'Settings' },
+        ]}
+      />
 
       <OrderTicketModal
         // Hidden, not closed, while a level is being aimed: the ticket keeps its state and the

@@ -46,7 +46,9 @@ function authenticated(request: NextRequest): boolean {
   return readSession(request.cookies.get(SESSION_COOKIE)?.value) !== null;
 }
 
-const NO_ACCOUNT = NextResponse.json({ error: 'account required' }, { status: 400 });
+// A function, not a shared constant: a Response body can only be sent once, so a module-level
+// instance would fail ("body already used") from the second request that hit it.
+const noAccount = () => NextResponse.json({ error: 'account required' }, { status: 400 });
 
 export async function GET(request: NextRequest) {
   try {
@@ -55,7 +57,7 @@ export async function GET(request: NextRequest) {
     }
 
     const account = normalizeAccountKey(request.nextUrl.searchParams.get('account'));
-    if (!account) return NO_ACCOUNT;
+    if (!account) return noAccount();
 
     // Reading is also using: the expiry is pushed out here, so an account being watched rather
     // than traded does not quietly age out from under its owner.
@@ -92,7 +94,7 @@ async function save(request: NextRequest) {
     const account = normalizeAccountKey(
       typeof payload.account === 'string' ? payload.account : null
     );
-    if (!account) return NO_ACCOUNT;
+    if (!account) return noAccount();
 
     if (!payload.books || typeof payload.books !== 'object') {
       return NextResponse.json({ error: 'invalid body' }, { status: 400 });
@@ -120,7 +122,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const account = normalizeAccountKey(request.nextUrl.searchParams.get('account'));
-    if (!account) return NO_ACCOUNT;
+    if (!account) return noAccount();
 
     await redisDelete(bookKey(account));
     return NextResponse.json({ ok: true });

@@ -50,7 +50,7 @@ const QUOTES_PERSIST_MS = 5_000;
  *
  * Every series is rolled out of the minute archive, so the real ceiling is the archive itself —
  * a month of minutes is only about 180 H4 bars. These caps exist for M1, where handing
- * lightweight-charts forty thousand bars in one call stalls the render for no benefit: nobody
+ * the chart forty thousand bars in one call stalls the render for no benefit: nobody
  * scrolls ten thousand minutes in a sitting, and rolling a coarser view is what zooming out is
  * for.
  */
@@ -62,12 +62,11 @@ const QUOTES_PERSIST_MS = 5_000;
  * is only about seven days of a window that holds twenty-five — so setting the start marker
  * anywhere earlier than that left the history in front of it simply absent from the chart,
  * looking as though the session had hidden it. It had not; it was never seeded.
- *
- * 36,000 M1 candles is what the publisher guarantees, and the coarser frames are that number
- * divided down, so every one of them reaches the same distance back.
  */
-const CHART_MAX_BARS: Partial<Record<TimeframeKey, number>> = { M1: 40_000, M5: 8_000 };
-const DEFAULT_MAX_BARS = 4_000;
+// Sized to show the whole published window (60,000 M1 candles): M1 needs 60k, M5 12k, M15 4k.
+// Raise these if the seeder's `candles` setting is ever raised above ~64,000.
+const CHART_MAX_BARS: Partial<Record<TimeframeKey, number>> = { M1: 64_000, M5: 13_000 };
+const DEFAULT_MAX_BARS = 5_000;
 
 function maxBarsFor(timeframe: TimeframeKey): number {
   return CHART_MAX_BARS[timeframe] ?? DEFAULT_MAX_BARS;
@@ -128,6 +127,8 @@ class MarketStore {
   private quotes: Record<string, QuoteState> = {};
   private series = new Map<string, CandleSeries>();
   private snapshots = new Map<string, Candle[]>();
+  /** Series a tick has changed since the last frame's snapshot. */
+  private dirtySeries = new Set<string>();
   private dayStats = new Map<string, DayStats>();
 
   private downloader: BridgeDownloader | null = null;
@@ -254,14 +255,6 @@ class MarketStore {
    */
   getClock = (): number => this.playback.clockMs || Date.now();
 
-  /**
-   * Kept for the trading store, which keys its book by mode.
-   *
-   * There is only one book now. The old split existed because the Strategy Tester was a
-   * separate world entered by hand; playback *is* the world, so a trade taken in it is simply
-   * a trade on the account.
-   */
-  getMode = (): 'live' => 'live';
 
   /** Subscribe to the raw tick stream. Used by the order engine, never by a view. */
   onTick = (listener: TickHandler): (() => void) => {
@@ -285,6 +278,12 @@ class MarketStore {
 
     const flush = () => {
       this.flushScheduled = false;
+      // Series are mutated in place per tick; React gets one fresh copy per frame instead.
+      for (const seriesKey of this.dirtySeries) {
+        const series = this.series.get(seriesKey);
+        if (series) this.snapshots.set(seriesKey, series.snapshot());
+      }
+      this.dirtySeries.clear();
       this.listeners.forEach((listener) => listener());
     };
 
@@ -511,7 +510,8 @@ class MarketStore {
     const clockSeconds = Math.floor(Math.max(clockMs, this.previewMs) / 1000);
 
     series.seed(seriesAt(symbol, timeframe, clockSeconds, maxBarsFor(timeframe)));
-    this.snapshots.set(seriesKey, series.all());
+    this.snapshots.set(seriesKey, series.snapshot());
+    this.dirtySeries.delete(seriesKey);
   }
 
   private reseedAll(): void {
@@ -571,7 +571,7 @@ class MarketStore {
     // motion on M1 and H4 alike without a second data source.
     for (const [seriesKey, candles] of this.series) {
       if (!seriesKey.startsWith(`${tick.symbol}|`)) continue;
-      if (candles.applyTick(tick) !== 'stale') this.snapshots.set(seriesKey, candles.all());
+      if (candles.applyTick(tick) !== 'stale') this.dirtySeries.add(seriesKey);
     }
 
     // Orders and stops are evaluated against every tick, not once a frame.

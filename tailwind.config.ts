@@ -19,7 +19,8 @@ const config: Config = {
         bg: '#080b12',
 
         // Text, iOS label hierarchy
-        muted: '#8e8e93',       // secondary label -- subtitles, units, inactive glyphs
+        muted: '#98989f',       // secondary label -- subtitles, units, inactive glyphs
+        quiet: '#bababa',       // the terminal's list greys -- prices, times, L/H, change
         faint: '#5c5c5e',       // tertiary label -- placeholders, disabled, arrow separators
         chartlabel: '#d1d4dc',  // the chart toolbar's own grey, lighter than the list greys
 
@@ -32,23 +33,12 @@ const config: Config = {
         // Semantic
         accent: '#0A84FF',      // links, active state, the winning side
         'accent-ios': '#007AFF',// the older system blue, used by the community tiles
-        danger: '#FF3B30',      // destructive actions, the losing side
+        danger: '#F04534',      // destructive actions, the losing side -- the terminal's red
         success: '#30D158',
       },
       fontFamily: {
-        // Opt-in only: `font-inter` on the rows that must be Inter regardless of platform.
-        inter: ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
-        /*
-         * The money face: the header running total and the per-row P/L, on Trade and History.
-         *
-         * `var(--font-outfit)` and nothing else that could be Outfit. A bare 'Outfit' used to
-         * follow it as a fallback, which would have resolved to whichever Outfit happened to be
-         * installed on the reader's machine -- the stock Google release, not the edited cut in
-         * public/. Same family name, different outlines, and it would only ever have shown up
-         * on someone else's device. The system stack is the only fallback, so a miss is
-         * obviously a miss rather than quietly the wrong font.
-         */
-        outfit: ['var(--font-outfit)', 'system-ui', 'sans-serif'],
+        // MT5's second face; the first is the system font, inherited from :root.
+        'mt5-cond': ['var(--font-mt5-condensed)', 'Roboto Condensed', 'system-ui', 'sans-serif'],
       },
     },
   },

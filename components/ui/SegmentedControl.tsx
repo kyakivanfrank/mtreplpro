@@ -5,11 +5,9 @@ import SlidingPill from '@/components/ui/SlidingPill';
 import { useSlidingPill } from '@/components/ui/useSlidingPill';
 
 /**
- * A row of text tabs with the selection pill sliding between them — the bottom bar's mechanism
- * at segmented-control scale.
- *
- * `BottomNav` deliberately does not go through this: its items carry an icon, caption, `flex-1`
- * and per-tab tint, and folding those in would make this a nav bar rather than a control.
+ * A row of text tabs with the selection pill sliding between them — the tab bar's mechanism at
+ * segmented-control scale. As on the terminal's History header: SF Pro 17pt, the selected label
+ * stays white and only the dark pill marks it.
  */
 export default function SegmentedControl<T extends string>({
   tabs,
@@ -22,14 +20,16 @@ export default function SegmentedControl<T extends string>({
   onChange: (tab: T) => void;
   className?: string;
 }) {
-  const pillState = useSlidingPill(tabs.indexOf(value));
+  const pillState = useSlidingPill(tabs.indexOf(value), { grow: 1.08, inset: 4 });
 
   return (
-    <div
-      ref={pillState.trackRef}
-      className={`floating-nav relative flex rounded-full p-[4px] ${className}`}
-    >
-      <SlidingPill {...pillState} />
+    <div ref={pillState.trackRef} className={`floating-nav relative flex h-[50px] rounded-full px-[4px] ${className}`}>
+      <SlidingPill
+        pill={pillState.pill}
+        settled={pillState.settled}
+        surfaceRef={pillState.surfaceRef}
+        trackWidth={pillState.trackWidth}
+      />
 
       {tabs.map((name, index) => (
         <button
@@ -38,12 +38,9 @@ export default function SegmentedControl<T extends string>({
             pillState.itemRefs.current[index] = node;
           }}
           onClick={() => onChange(name)}
-          className={`
-            floating-nav-item
-            relative z-10 flex h-[44px] items-center justify-center
-            rounded-full px-3 text-[14px] leading-none
-            ${value === name ? 'active font-semibold' : 'font-medium'}
-          `}
+          className={`floating-nav-item is-plain relative z-10 flex h-full items-center justify-center px-[13px] text-[17px] leading-none ${
+            value === name ? 'active' : ''
+          }`}
         >
           {name}
         </button>

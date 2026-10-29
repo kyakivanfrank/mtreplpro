@@ -19,25 +19,23 @@ export default function DealItem({
   const side = sideTone(deal.type === 'buy');
 
   return (
-    <div className="flex flex-col px-1.5 py-2.5">
-      <div className="flex justify-between items-center mb-1">
-        <div className="flex items-center gap-1.5">
-          <span className="symbol-condensed font-semibold text-[16px] leading-none tracking-tight">{symbol}</span>
-          <span className={`text-[15px] leading-none ${side}`}>{deal.type}</span>
-          <span className={`text-[15px] leading-none ${side}`}>{deal.volume.toFixed(2)}</span>
-
+    <div className="flex flex-col px-4 py-1">
+      <div className="flex justify-between items-center h-[26px]">
+        <span className="mt5-cond text-[17px] leading-none">
+          {symbol} <span className={side}>{deal.type} {deal.volume.toFixed(2)}</span>
           {(deal.reason === 'sl' || deal.reason === 'tp') && (
-            <span className="text-muted text-[11px] uppercase">{deal.reason}</span>
+            <span className="text-quiet text-[13px] uppercase"> {deal.reason}</span>
           )}
-        </div>
-        <span className={`font-outfit font-semibold text-[16px] leading-none ${resultTone(deal.profit >= 0)}`}>
+        </span>
+        <span className={`mt5-cond text-[17px] leading-none ${resultTone(deal.profit >= 0)}`}>
           {groupedMoney(deal.profit)}
         </span>
       </div>
-      <div className="flex justify-between items-center font-inter text-muted text-[13px]">
+      {/* Same size as the Trade tab's price line on the real terminal, not a smaller caption. */}
+      <div className="mt5-price-line flex justify-between items-center text-quiet text-[17px] leading-[24px]">
         <span>
-          {showTicket && <span className="text-faint">#{deal.ticket} </span>}
-          {deal.openPrice.toFixed(digits)} <span className="text-faint">→</span> {deal.closePrice.toFixed(digits)}
+          {showTicket && <span>#{deal.ticket} </span>}
+          {deal.openPrice.toFixed(digits)} → {deal.closePrice.toFixed(digits)}
         </span>
         <span>{stampSecond(deal.closeTime)}</span>
       </div>

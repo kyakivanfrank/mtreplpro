@@ -2,7 +2,7 @@ import React from 'react';
 import CreditCardIcon from '@/components/icons/CreditCard';
 import PlusIcon from '@/components/icons/Plus';
 import { profitColor } from '@/lib/trading/profit';
-import { money } from '@/lib/money';
+import { groupedMoney } from '@/lib/money';
 
 /* ------------------------------------------------------------------ */
 /*  The three slots of the Trade header                                */
@@ -15,7 +15,7 @@ export function TradeHeaderLeft({ onOpenBalance }: { onOpenBalance: () => void }
     <button
       onClick={onOpenBalance}
       aria-label="Balance"
-      className="glass-control w-[47px] h-[47px] rounded-full flex items-center justify-center cursor-pointer"
+      className="glass-control w-[44px] h-[44px] rounded-full flex items-center justify-center cursor-pointer"
     >
       <CreditCardIcon />
     </button>
@@ -36,10 +36,10 @@ export function TradeHeaderCenter({
 }) {
   return (
     <div
-      className="font-outfit text-[22px] font-semibold tracking-wide"
+      className="mt5-cond text-[23px] leading-none"
       style={{ color: profitColor(holding ? openProfit : 0) }}
     >
-      {holding ? `${money(openProfit)} USD` : 'USD'}
+      {holding ? `${groupedMoney(openProfit)} USD` : 'USD'}
     </div>
   );
 }
@@ -55,7 +55,7 @@ export function TradeHeaderRight() {
       type="button"
       aria-label="New order"
       aria-disabled="true"
-      className="glass-control w-[47px] h-[47px] rounded-full flex items-center justify-center"
+      className="glass-control w-[44px] h-[44px] rounded-full flex items-center justify-center"
     >
       <PlusIcon />
     </button>

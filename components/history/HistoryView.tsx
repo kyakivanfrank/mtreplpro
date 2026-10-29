@@ -54,7 +54,7 @@ export default function HistoryView() {
       headerLeft={<HistoryHeaderLeft />}
       headerCenter={<HistoryHeaderCenter tab={tab} onChange={setTab} />}
       headerRight={<HistoryHeaderRight />}
-      solidHeader
+      edge="soft"
     >
       <HistoryList
         tab={tab}

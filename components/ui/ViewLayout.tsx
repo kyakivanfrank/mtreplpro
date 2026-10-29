@@ -42,18 +42,6 @@ const PULL_CEILING_PX = 140;
  * of pixels and settles back. That overshoot is the whole difference between "the transform
  * was removed" and "the thing was under tension and let go".
  */
-/**
- * How much of the bottom falloff is ramp rather than flat black.
- *
- * Measured down from the top of the band, and the band ends at the top of the nav — so the
- * fade is spent entirely inside the nav's own top gap and there is no darkening above it at
- * all. The list runs at full strength until it is level with the pill.
- *
- * Kept under `--nav-gap-top` (1.25rem), so the ramp is finished before it reaches the pill and
- * the black behind the pill is solid all the way to its top edge with a quarter-rem to spare.
- */
-const FALLOFF_RAMP = '8rem';
-
 const RELEASE_MS = 460;
 const RELEASE_EASE = 'cubic-bezier(0.18, 0.89, 0.24, 1.12)';
 
@@ -78,14 +66,13 @@ interface ViewLayoutProps {
   headerClassName?: string;
   wrapperClassName?: string;
   /**
-   * Fills the header (and the sticky bar under it) with near-opaque black instead of leaving
-   * it a bare filter.
+   * How the header meets the content scrolling under it — the two iOS 26 scroll-edge styles.
    *
-   * For the screens whose content is a dense column of figures — Trade and History — where
-   * 1.2px of blur is not enough to tell a number under the bar from a number in it. The glass
-   * controls sitting on the bar are untouched either way.
+   * `hard` (Settings, Trade, Quotes): pure black at rest; once anything scrolls beneath, a
+   * frosted bar with a hairline fades in. `soft` (History): no bar at all, the content dims and
+   * blurs out towards the top behind floating controls.
    */
-  solidHeader?: boolean;
+  edge?: 'hard' | 'soft';
   /**
    * Laid over the header's three slots, inside the header itself.
    *
@@ -131,9 +118,12 @@ export default function ViewLayout({
   // The two screens that opt out do it for opposite reasons: Settings takes more, because its
   // header is a line of text with no height of its own, and Chart keeps the symmetric pair
   // because its toolbar floats over the canvas rather than over a status bar.
-  headerClassName = "pt-1 pb-2 px-4",
+  // Measured off the real terminal: 44pt controls whose centre sits 22pt below the safe-area
+  // top, and the bar's edge 10pt under them. The minimum counts the padding (border-box), so a
+  // header with no 44pt control -- Settings -- still centres its title where the others do.
+  headerClassName = "min-h-[54px] pb-[10px] px-4",
   wrapperClassName = "",
-  solidHeader = false,
+  edge = 'hard',
   headerOverlay,
   backdrop,
 }: ViewLayoutProps) {
@@ -179,6 +169,13 @@ export default function ViewLayout({
     if (!scrolls || !pane) return;
 
     /** Where the finger started, re-anchored whenever the gesture changes character. */
+    // Drives the scroll-edge material. Written to the node so a scroll never re-renders the view.
+    const header = headerRef.current;
+    const onScroll = () => {
+      if (header) header.toggleAttribute('data-scrolled', pane.scrollTop > 0);
+    };
+    onScroll();
+
     let anchor: number | null = null;
     /** True once this gesture has been claimed as a pull rather than a scroll. */
     let pulling = false;
@@ -250,6 +247,7 @@ export default function ViewLayout({
       }
     };
 
+    pane.addEventListener('scroll', onScroll, { passive: true });
     pane.addEventListener('touchstart', onStart, { passive: true });
     pane.addEventListener('touchmove', onMove, { passive: false });
     pane.addEventListener('touchend', onEnd);
@@ -257,6 +255,7 @@ export default function ViewLayout({
     pane.addEventListener('transitionend', onSettled);
 
     return () => {
+      pane.removeEventListener('scroll', onScroll);
       pane.removeEventListener('touchstart', onStart);
       pane.removeEventListener('touchmove', onMove);
       pane.removeEventListener('touchend', onEnd);
@@ -270,17 +269,22 @@ export default function ViewLayout({
   const header = (
     <div
       ref={headerRef}
+      data-edge={scrolls ? edge : undefined}
       className={`
         ${scrolls ? 'view-header absolute inset-x-0 top-0 z-30' : 'relative'}
-        ${solidHeader ? 'view-header-solid' : ''}
         ${headerClassName} flex justify-between items-center
       `}
     >
-      <div className="flex-1 flex justify-start z-10">{headerLeft}</div>
-      <div className="absolute left-1/2 -translate-x-1/2 z-0 flex justify-center items-center">
-        {headerCenter}
+      <div className="pointer-events-none flex-1 flex justify-start z-10 [&>*]:pointer-events-auto">{headerLeft}</div>
+      {/*
+        Centred by a full-width flex box, not by `left-1/2 -translate-x-1/2`: a -50% shift of an
+        odd-width title lands it on a half pixel, and inside the header's composited layer iOS
+        then renders the text visibly soft.
+      */}
+      <div className="pointer-events-none absolute inset-x-0 z-0 flex justify-center items-center">
+        <div className="pointer-events-auto">{headerCenter}</div>
       </div>
-      <div className="flex-1 flex justify-end z-10">{headerRight}</div>
+      <div className="pointer-events-none flex-1 flex justify-end z-10 [&>*]:pointer-events-auto">{headerRight}</div>
       {headerOverlay}
     </div>
   );
@@ -300,85 +304,6 @@ export default function ViewLayout({
         <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
           {backdrop}
         </div>
-      )}
-
-      {/*
-        The horizon.
-
-        Content does not stop at the edge of the screen, it goes over it — and a list that is cut
-        off by a hard line reads as ending there rather than as continuing past the frame. Two
-        gradients, top and bottom, give the last tenth of the view a falloff, so a row leaving
-        the screen dims on its way out instead of being guillotined.
-
-        Layered deliberately between things. At `z-20` they are over the scrolling pane (`z-10`)
-        and under the header (`z-30`), and the tab bar is `fixed z-50` outside this component
-        entirely — so the two surfaces that have to stay legible are above the falloff and
-        everything that scrolls is beneath it.
-
-        The top one starts at the very top of the frame, behind the header, and that placement is
-        load-bearing twice over. The header is a blur with no fill, so content passing under it
-        is dimmed rather than hidden and genuinely needs the falloff. And starting it lower would
-        put the gradient's darkest point exactly where Trade's sticky "Positions" bar parks —
-        the one row that never scrolls, permanently under the heaviest black on the screen.
-        Anchored at the top, that bar sits three-quarters of the way down the ramp instead,
-        where the gradient has almost run out.
-
-        Only on scrolling views. The chart owns its whole area and nothing in it leaves the top
-        or bottom edge; a permanent gradient over a canvas is a dirty screen, not an affordance.
-      */}
-      {scrolls && (
-        <>
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 z-20"
-            style={{
-              height: '14px',
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%)',
-            }}
-          />
-          {/*
-            The bottom falloff.
-
-            Two things it has to do, and they pull in opposite directions.
-
-            Behind the nav it has to be *finished* — plain opaque black, no residue. Anything
-            short of that leaves rows faintly legible in the margins around the pill and under
-            it, which is the one place they must not be: the pill is a floating object, and
-            seeing the list through the gap beside it is what stops it reading as floating.
-            So the bottom `RAMP_PX` worth of the band is `#000` flat, not a gradient at all.
-
-            But it must not reach any higher than the nav does. The band is exactly
-            `--nav-total-height` — the nav's own footprint and nothing more — so the whole fade
-            happens inside the gap above the pill and the list is at full strength a centimetre
-            further up. A falloff that climbs the screen dims rows that are nowhere near the
-            nav, which is the thing that made it read as a bar in the first place.
-
-            That leaves the ramp short, and a short ramp is exactly where a linear one betrays
-            itself: alpha is perceived closer to a square-law, so a straight line from black to
-            nothing bunches its visible change into the last stretch and leaves a findable line
-            where it starts. The stops below are an ease-out — most of the alpha is spent early,
-            so the top of the band is already nearly gone by the time it formally ends.
-
-            Sized off the nav's own measurement rather than a percentage of the viewport. The
-            thing being covered is the nav, and `10%` is a different size relative to it on
-            every phone.
-          */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20"
-            style={{
-              height: 'var(--nav-total-height)',
-              background: `linear-gradient(to top,
-                #000 0%,
-                #000 calc(100% - ${FALLOFF_RAMP}),
-                rgba(0,0,0,0.94) calc(100% - ${FALLOFF_RAMP} * 0.78),
-                rgba(0,0,0,0.80) calc(100% - ${FALLOFF_RAMP} * 0.56),
-                rgba(0,0,0,0.56) calc(100% - ${FALLOFF_RAMP} * 0.36),
-                rgba(0,0,0,0.26) calc(100% - ${FALLOFF_RAMP} * 0.18),
-                rgba(0,0,0,0) 100%)`,
-            }}
-          />
-        </>
       )}
 
       {/* Header. Outside the scroll pane and outside the stretch — fixed by construction. */}

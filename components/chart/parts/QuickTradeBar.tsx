@@ -2,6 +2,7 @@ import React from 'react';
 import VolumeInput from '@/components/trade/VolumeInput';
 import { IN_EASE, IN_MS, OUT_EASE, OUT_MS } from '@/components/ui/CenterDialog';
 import { TRADE_BAR_HEIGHT } from '@/components/chart/chartConfig';
+import { PROFIT_DOWN, PROFIT_UP } from '@/lib/trading/profit';
 
 interface BigPrice {
   prefix: string;
@@ -9,10 +10,7 @@ interface BigPrice {
   super: string;
 }
 
-/**
- * One side of the one-click bar. The two were written out separately and differed only in
- * colour, label and which price they read.
- */
+/** One side of the one-click bar: its label pinned top-left, the price centred on the baseline. */
 function PriceButton({
   side,
   price,
@@ -30,28 +28,32 @@ function PriceButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-[30%] shrink-0 ${background} flex flex-col justify-center px-2 sm:px-4 relative overflow-hidden active:brightness-90 disabled:opacity-50`}
+      // No colour transition: ticks arrive in bursts, and a fade between red and blue left the
+      // buttons sitting purple. The real bar switches outright.
+      style={{ backgroundColor: background }}
+      className="relative w-[30%] shrink-0 overflow-hidden text-white active:brightness-90 disabled:opacity-50"
     >
-      <span className="text-[10px] font-medium text-white/90 absolute top-1.5 left-2 tracking-wide">{side}</span>
-      <div className="flex items-baseline justify-center mt-3 text-white">
-        <span className="text-[16px] md:text-[18px] tracking-tight">{price.prefix}</span>
-        <span className="text-[24px] md:text-[32px] font-medium leading-none">{price.big}</span>
-        <span className="text-[12px] md:text-[14px] font-medium relative -top-[8px] md:-top-[12px]">{price.super}</span>
-      </div>
+      {/* Sizes from the real bar's ink: label 5.7pt caps; the price
+          then taken 10% smaller at the owner's request. */}
+      <span className="absolute top-[6px] left-[7px] text-[8.5px] leading-none">{side}</span>
+      <span className="mt5-cond absolute inset-x-0 bottom-[3px] flex items-baseline justify-center">
+        <span className="text-[14.5px] leading-none">{price.prefix}</span>
+        <span className="text-[30.5px] leading-none">{price.big}</span>
+        <span className="text-[12px] leading-none self-start mt-[1px]">{price.super}</span>
+      </span>
     </button>
   );
 }
 
 /**
- * The one-click trade drawer, drawn out from behind the toolbar.
+ * The one-click trade bar, docked above the tab bar as on the terminal.
  *
  * Two transitions on two elements doing one thing: the outer box animates its *height*, so the
- * chart genuinely grows into the space rather than being covered, and the inner bar slides its
- * own height upward inside it, so the row's top edge stays pinned under the toolbar the whole
- * way. Height alone would squash the buttons; transform alone would leave a 48px hole.
+ * chart genuinely gives up the space rather than being covered, and the inner bar slides down out
+ * of it, so the row's bottom edge stays pinned to the tab bar the whole way.
  *
- * Timings are the action sheet's, from `CenterDialog` — this opens and closes on a tap in
- * exactly the way a sheet does.
+ * Both buttons take the last tick's direction — red together on a down tick, blue together on an
+ * up one — rather than a fixed red sell and blue buy.
  */
 export default function QuickTradeBar({
   open,
@@ -59,6 +61,7 @@ export default function QuickTradeBar({
   ask,
   hasBid,
   hasAsk,
+  rising,
   symbol,
   volume,
   onVolumeChange,
@@ -70,16 +73,19 @@ export default function QuickTradeBar({
   /** A side with no price yet cannot be traded, so its button is disabled rather than guessing. */
   hasBid: boolean;
   hasAsk: boolean;
+  /** Whether the last tick moved up. */
+  rising: boolean;
   symbol: string;
   volume: number;
   onVolumeChange: (volume: number) => void;
   onTrade: (side: 'buy' | 'sell') => void;
 }) {
   const transition = `${open ? IN_MS : OUT_MS}ms ${open ? IN_EASE : OUT_EASE}`;
+  const tone = rising ? PROFIT_UP : PROFIT_DOWN;
 
   return (
     <div
-      // Rolled up, the row is out of the tab order and out of the accessibility tree, so a
+      // Rolled away, the row is out of the tab order and out of the accessibility tree, so a
       // keyboard or VoiceOver user cannot land on a buy button that is not on the screen.
       inert={!open}
       className="shrink-0 w-full overflow-hidden bg-black"
@@ -88,38 +94,25 @@ export default function QuickTradeBar({
         transition: `height ${transition}`,
       }}
     >
-      {/* Trimmed from 56: the easiest height on the screen to give back to the chart, and what
-          is left still clears the 44pt minimum tap target. */}
       <div
-        className="flex items-stretch gap-0 px-0 h-[48px] shrink-0 border-b border-[#0a0e17]/50 w-full"
+        className="flex items-stretch w-full"
         style={{
-          transform: open ? 'translate3d(0, 0, 0)' : 'translate3d(0, -100%, 0)',
+          height: TRADE_BAR_HEIGHT,
+          transform: open ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
           transition: `transform ${transition}`,
         }}
       >
-        <PriceButton side="SELL" price={bid} background="bg-[#D15247]" disabled={!hasBid} onClick={() => onTrade('sell')} />
+        <PriceButton side="SELL" price={bid} background={tone} disabled={!hasBid} onClick={() => onTrade('sell')} />
 
         <VolumeInput
           value={volume}
           onChange={onVolumeChange}
           symbol={symbol}
-          /*
-            The prices are the fixed pair — 30% each — and the lot takes the remaining 40%. A buy
-            and a sell price are the same shape whatever the instrument, so they can be given a
-            width; the lot box only holds two chevrons and a four-character field.
-
-            `px-2` so the chevrons' negative margins cancel the padding exactly. Hairlines top and
-            bottom rather than the near-black used down its sides: the box is a field in a bar of
-            buttons and needs to read as recessed.
-          */
-          className="flex-1 min-w-0 bg-transparent px-2 z-10 border-x border-x-[#0a0e17]/50 border-y border-y-white/15"
-          // The lot, in the same face and 80% condensing as the P/L figures. Only here — the
-          // ticket's copy stays on the system stack; this is the one placement sitting inches
-          // from the prices it sizes.
-          inputClassName="font-outfit"
+          className="flex-1 min-w-0 bg-black px-6 [&>button]:text-white [&>button:disabled]:opacity-100"
+          inputClassName="!font-semibold !text-[15px]"
         />
 
-        <PriceButton side="BUY" price={ask} background="bg-[#4786DC]" disabled={!hasAsk} onClick={() => onTrade('buy')} />
+        <PriceButton side="BUY" price={ask} background={tone} disabled={!hasAsk} onClick={() => onTrade('buy')} />
       </div>
     </div>
   );

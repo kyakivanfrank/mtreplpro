@@ -20,7 +20,7 @@ import { useBook } from './store';
 /** Nothing at stake. Distinct from profit on purpose — flat is not a small win. */
 export const PROFIT_FLAT = '#FFFFFF';
 export const PROFIT_UP = '#0A84FF';
-export const PROFIT_DOWN = '#FF3B30';
+export const PROFIT_DOWN = '#F04534';
 
 /**
  * Colour for a profit figure.

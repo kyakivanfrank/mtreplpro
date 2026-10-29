@@ -21,8 +21,8 @@ export default function OrdersSection({
 
   return (
     <>
-      <div className="flex justify-between items-center bg-[#0c0c0e] px-3 py-1.5 border-y border-surface-2 mt-2">
-        <span className="font-semibold text-[14px]">Orders</span>
+      <div className="sticky-bar flex items-center px-4 h-[30px] mt-1">
+        <span className="mt5-cond text-[16px] leading-none">Orders</span>
       </div>
       <div className="flex flex-col">
         {orders.map((order) => (

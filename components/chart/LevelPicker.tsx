@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChartCoords } from '@/components/chart/chartCoords';
 import type { Candle } from '@/lib/market/types';
 import type { LevelField } from '@/components/chart/chartConfig';
+import { stampMinute } from '@/lib/timeFormat';
 
 /* ------------------------------------------------------------------ */
 /*  Order level picker                                                 */
@@ -37,15 +38,6 @@ interface LevelPickerProps {
   revision: number;
   onSet: (field: LevelField, price: number) => void;
   onCancel: () => void;
-}
-
-function stamp(unixSeconds: number): string {
-  const d = new Date(unixSeconds * 1000);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())} ` +
-    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
-  );
 }
 
 export default function LevelPicker({
@@ -153,7 +145,7 @@ export default function LevelPicker({
                 className="absolute -translate-x-1/2 px-1 py-px rounded text-[9px] font-medium text-black whitespace-nowrap pointer-events-none tabular-nums"
                 style={{ left: x, top: 4, backgroundColor: color, opacity: 0.9 }}
               >
-                {stamp(time)}
+                {stampMinute(time * 1000)}
               </div>
             </>
           )}
@@ -184,7 +176,7 @@ export default function LevelPicker({
             {label}
           </span>
           <span className="text-[11px] text-muted tabular-nums">
-            {price.toFixed(digits)} · {stamp(time)}
+            {price.toFixed(digits)} · {stampMinute(time * 1000)}
           </span>
         </div>
 

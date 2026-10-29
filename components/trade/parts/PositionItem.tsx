@@ -4,8 +4,8 @@ import { sideTone, resultTone } from '@/components/ui/tone';
 import type { PositionView } from '@/components/trade/positionView';
 
 /**
- * A position row: two lines, nothing else. It used to expand in place, which shoved every row
- * below it down the screen. Tapping now raises a sheet instead, so the list stays a list.
+ * A position row, as the terminal draws it: symbol, side and volume over the open → current
+ * prices, with the P/L on the right. Tapping raises a sheet rather than expanding in place.
  */
 export default function PositionItem({
   position,
@@ -20,17 +20,15 @@ export default function PositionItem({
   const tone = resultTone(view.isProfit);
 
   return (
-    <button onClick={onOpen} className="flex flex-col px-1.5 text-left w-full">
-      <div className="flex justify-between items-center mb-2.5 w-full">
-        <div className="flex items-center gap-1.5">
-          <span className="symbol-condensed font-semibold text-[16px] leading-none tracking-tight">{view.symbol}</span>
-          <span className={`text-[15px] symbol-condensed font-bold leading-none ${side}`}>{position.type}</span>
-          <span className={`text-[15px] symbol-condensed font-bold  leading-none ${side}`}>{position.volume.toFixed(2)}</span>
-        </div>
-        <span className={`font-outfit font-semibold text-[22px] leading-none ${tone}`}>{view.profit}</span>
+    <button onClick={onOpen} className="flex flex-col px-4 py-1 text-left w-full active:bg-white/5">
+      <div className="flex justify-between items-center w-full h-[26px]">
+        <span className="mt5-cond text-[17px] leading-none">
+          {view.symbol} <span className={side}>{position.type} {position.volume.toFixed(2)}</span>
+        </span>
+        <span className={`mt5-cond text-[20px] leading-none ${tone}`}>{view.profit}</span>
       </div>
-      <div className="flex justify-between items-center font-inter text-muted text-[14px] w-full">
-        <span>{view.openPrice} <span className="text-faint">→</span> {view.currentPrice}</span>
+      <div className="mt5-price-line flex justify-between items-center text-quiet text-[17px] leading-[24px] w-full">
+        <span>{view.openPrice} → {view.currentPrice}</span>
         {position.swap !== 0 && <span>swap {position.swap.toFixed(2)}</span>}
       </div>
     </button>

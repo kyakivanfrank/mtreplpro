@@ -5,6 +5,7 @@ import type { ChartCoords } from '@/components/chart/chartCoords';
 import type { QuoteState } from '@/lib/market/store';
 import { positionNet, profitAtPrice } from '@/lib/trading/math';
 import { PROFIT_DOWN, PROFIT_UP, profitColor } from '@/lib/trading/profit';
+import { moneyWithCurrency } from '@/lib/money';
 import type { PendingOrder, Position } from '@/lib/trading/types';
 
 /* ------------------------------------------------------------------ */
@@ -88,11 +89,14 @@ const COLORS = {
  * hairline at device-pixel-ratio 3, which is exactly the phone this is for.
  */
 function dots(color: string): string {
-  return `repeating-linear-gradient(to right, ${color} 0 2px, transparent 2px 6px)`;
+  // Dashed, as the terminal draws an open position: 4 on, 3 off.
+  return `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 7px)`;
 }
 
-function money(value: number): string {
-  return `${value.toFixed(2)} USD`;
+/** `+1.55 USD` / `-0.36 USD`: the terminal signs a position's running figure. */
+function signedMoney(value: number): string {
+  const text = moneyWithCurrency(value);
+  return value > 0 ? `+${text}` : text;
 }
 
 type LevelKind = 'entry' | 'sl' | 'tp';
@@ -125,6 +129,8 @@ interface TradeLinesProps {
    */
   quotes: Record<string, QuoteState>;
   coords: ChartCoords;
+  /** Width of the price column: lines stop at the plot's edge, the price box sits beyond it. */
+  rightInset: number;
   digits: number;
   /** Bumped by the chart whenever it pans, zooms or receives new bars. */
   revision: number;
@@ -140,6 +146,7 @@ export default function TradeLines({
   quote,
   quotes,
   coords,
+  rightInset,
   digits,
   revision,
   onMove,
@@ -368,13 +375,16 @@ export default function TradeLines({
 
         const lit = active?.id === level.id && active.kind === level.kind;
         const amount = level.amount;
-        const showAmount = lit && amount !== undefined;
+        // An entry always quotes its running figure, as on the terminal; a stop or target only when
+        // it has been tapped open.
+        const showAmount = amount !== undefined && (level.kind === 'entry' || lit);
 
         return (
           <React.Fragment key={`${level.id}-${level.kind}`}>
             <div
-              className="absolute left-0 right-0 pointer-events-none"
+              className="absolute left-0 pointer-events-none"
               style={{
+                right: rightInset,
                 top: y,
                 height: held ? 2 : 1,
                 ...(level.kind === 'entry'
@@ -392,7 +402,7 @@ export default function TradeLines({
               never overlap.
             */}
             <div
-              className="absolute left-1 -translate-y-full pb-px text-[9px] font-semibold pointer-events-none tabular-nums whitespace-nowrap"
+              className="absolute left-1 -translate-y-full pb-[2px] text-[11px] font-semibold pointer-events-none tabular-nums whitespace-nowrap"
               style={{ top: y, color: level.color }}
             >
               {level.label}
@@ -401,7 +411,7 @@ export default function TradeLines({
                   {', '}
                   {/* Coloured by what it is worth rather than by which line it belongs to — the
                       same blue/white/red the trade header and the Trade tab use. */}
-                  <span style={{ color: profitColor(amount) }}>{money(amount)}</span>
+                  <span style={{ color: profitColor(amount) }}>{signedMoney(amount)}</span>
                 </>
               )}
               {/* Only while it is being moved: setting a level is the one moment its price
@@ -416,8 +426,8 @@ export default function TradeLines({
             */}
             <div
               onPointerDown={(event) => beginPress(level, event)}
-              className="absolute left-0 right-0 -translate-y-1/2 h-8 pointer-events-auto"
-              style={{ top: y, touchAction: level.draggable ? 'none' : undefined }}
+              className="absolute left-0 -translate-y-1/2 h-8 pointer-events-auto"
+              style={{ right: rightInset, top: y, touchAction: level.draggable ? 'none' : undefined }}
             />
           </React.Fragment>
         );

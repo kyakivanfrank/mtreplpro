@@ -29,23 +29,21 @@ export default function PositionDetail({
     <div className="flex flex-col text-left ">
       {/* Identity */}
       <div className="flex justify-between items-baseline px-2 pt-1.5">
-        <div className="flex items-center gap-1.5">
-          <span className="symbol-condensed font-semibold text-[16px] leading-none tracking-tight">{view.symbol}</span>
-          <span className={`text-[15px] symbol-condensed font-bold leading-none ${side}`}>{position.type}</span>
-          <span className={`text-[15px] symbol-condensed font-bold leading-none ${side}`}>{position.volume.toFixed(2)}</span>
-        </div>
-        <span className="font-inter text-muted text-[14px]">#{position.ticket}</span>
+        <span className="mt5-cond text-[17px] leading-none">
+          {view.symbol} <span className={side}>{position.type} {position.volume.toFixed(2)}</span>
+        </span>
+        <span className="text-muted text-[14px]">#{position.ticket}</span>
       </div>
-      <div className="px-2 py-1 font-inter text-muted text-[14px]">{view.description}</div>
+      <div className="px-2 py-1 text-muted text-[14px]">{view.description}</div>
 
       {/* Result */}
 
       <div className="flex justify-between items-center bg-surface px-2 pt-1">
-        <span className="text-[15px] tabular-nums">
+        <span className="mt5-price-line text-[15px] tabular-nums">
           {view.openPrice} <span className="text-faint">→</span> {view.currentPrice}
         </span>
 
-        <span className={`font-outfit font-semibold text-[23px] leading-none ${tone}`}>
+        <span className={`mt5-cond text-[22px] leading-none ${tone}`}>
           {view.profit}
         </span>
       </div>
@@ -59,7 +57,7 @@ export default function PositionDetail({
       </div>
 
       {/* Terms */}
-      <div className="px-2 pt-2.5 pb-0.5 font-inter text-[14px] bg-surface text-muted space-y-1">
+      <div className="px-2 pt-2.5 pb-0.5 text-[14px] bg-surface text-muted space-y-1">
         <div className="flex justify-between items-center">
           <span className="flex gap-6">
             <span className="w-[26px]">S/L:</span>

@@ -10,19 +10,15 @@ export default function OrderRow({ order, symbol }: { order: OrderRecord; symbol
   const side = sideTone(order.kind.startsWith('buy'));
 
   return (
-    <div className="flex flex-col px-1.5 py-2.5">
-      <div className="flex justify-between items-center mb-1">
-        <div className="flex items-center gap-1.5">
-          <span className="symbol-condensed font-semibold text-[16px] leading-none tracking-tight">{symbol}</span>
-          <span className={`text-[15px] leading-none ${side}`}>{order.kind}</span>
-          <span className={`text-[15px] leading-none ${side}`}>{order.volume.toFixed(2)}</span>
-        </div>
-        <span className={`text-[13px] leading-none ${order.outcome === 'filled' ? 'text-accent' : 'text-muted'}`}>
-          {order.outcome}
+    <div className="flex flex-col px-4 py-[5px]">
+      <div className="flex justify-between items-center h-[26px]">
+        <span className="mt5-cond text-[17px] leading-none">
+          {symbol} <span className={side}>{order.kind} {order.volume.toFixed(2)}</span>
         </span>
+        <span className="mt5-cond text-[17px] leading-none text-white">{order.outcome}</span>
       </div>
-      <div className="flex justify-between items-center text-muted text-[13px]">
-        <span className="tabular-nums">{order.price.toFixed(digits)}</span>
+      <div className="flex justify-between items-center text-quiet text-[14px] leading-[22px]">
+        <span>{order.price.toFixed(digits)}</span>
         <span>{stampSecond(order.settledTime)}</span>
       </div>
     </div>

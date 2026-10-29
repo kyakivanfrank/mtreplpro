@@ -7,6 +7,28 @@
 
 ---
 
+## 0. The codebase as it is now (read this first)
+
+- **What it is:** a personal MT5-style trading *simulator*. It replays real M1 candles (published
+  by the seeder in `MT5 replica Seeder/`) and runs a local order engine. Architecture, data flow and
+  commands: `README.md`. Known bugs, fixes and open issues: `docs/CODE_AUDIT.md`.
+- **Owner decisions (do not undo):** keep the look-ahead autotrader, realistic ticket/account
+  numbers, Exness *trial* naming, the single shared login, and no "simulated" labelling. Fix bugs and
+  remove redundancy; do not re-architect features.
+- **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD at 60,000 M1 candles each, as set
+  in the seeder's `config.json`. The app follows whatever `/api/mt5/meta` reports.
+- **Stack in use:** Next.js 16 App Router, React 19, Tailwind 3, Upstash Redis over REST. The chart
+  is a hand-written canvas engine (`components/chart/engine/MT5Chart.ts`), not a library. Icons are
+  hand-made SVG components in `components/icons/`. Two fonts, as on the real terminal: the system
+  font (SF Pro) for UI text, and Roboto Condensed (self-hosted, `.mt5-cond`) for symbols, prices and
+  P/L. Parity measurements and decisions: `docs/MT5_PARITY.md`.
+- **Always:** `npx tsc --noEmit -p .` and `npm run build` before calling a change done. Use the npm
+  scripts (they wrap `scripts/next.mjs`). Don't commit unless asked.
+
+The sections below are the original design-system reference: use them for new UI.
+
+---
+
 ## 1. Typography
 
 MT5's iOS app rides entirely on the system font, which is what makes it feel "native."
@@ -263,25 +285,25 @@ lines (portrait; also produce landscape if you support rotation):
 
 ## 6. Core Screens Checklist (MT5 parity)
 
-- [ ] **Quotes / Watchlist** — symbol, bid, ask, spread, mini sparkline, swipe actions (trade/chart/alert)
-- [ ] **Chart** — candlestick + line toggle, timeframe pills (M1/M5/M15/H1/H4/D1/W1/MN), indicators sheet, crosshair with OHLC readout
-- [ ] **Trade / Order ticket** — volume stepper, SL/TP fields, market/pending toggle, buy/sell split buttons (teal/coral)
-- [ ] **Positions/Orders/History** tabs — swipe-to-close, P/L color-coded, running total header
-- [ ] **Account** — equity/balance/margin/free margin/margin level grid, broker/server info
-- [ ] **News** — MT5-style feed list
-- [ ] **Depth of Market (DOM)** — bid/ask ladder (optional, advanced)
+Status as of 2026-10-28:
+
+- [x] **Quotes / Watchlist** — symbol, bid, ask, spread, change, H/L, long-press to replace. *Missing:* sparkline, swipe actions.
+- [x] **Chart** — candlesticks, timeframes M1–MN, OHLC readout, one-click trade bar, SL/TP lines, replay controls. *Missing:* line mode, indicators.
+- [x] **Trade / Order ticket** — volume stepper, SL/TP (pick on chart), market + 4 pending types.
+- [x] **Positions/Orders/History** — P/L colour-coded, bulk close, deals/orders/balance ledger. *Missing:* swipe-to-close.
+- [x] **Account** — balance/equity/margin/free margin/margin level, broker/server/ledger settings.
+- [ ] **News** — only a placeholder row in Settings.
+- [ ] **Depth of Market (DOM)** — not started (optional).
 
 ---
 
-## 7. Assets To Actually Generate (action list)
+## 7. Assets (status)
 
-1. 1024×1024 master app icon (solid `#0B0E14` bg, simple mark — no MetaQuotes marks)
-2. Run master through a PWA icon generator → produces §4.1–4.3 automatically
-3. Build 9 splash screens per §4.4 (or use a generator; same bg + centered logo)
-4. Pull icon set: install **Phosphor** or **Tabler** via npm (`phosphor-react`,
-   `@tabler/icons-react`) — don't hand-draw 40 icons
-5. Candlestick chart lib: **lightweight-charts** (TradingView's open-source lib) — gives
-   you MT5-grade candlestick/line/volume rendering out of the box, MIT licensed
+1. App icons: done (`app/icon.png`, `app/apple-icon.png`, `public/icons/*`).
+2. Splash screens: done. Regenerate with `node scripts/generate-splash.mjs` (uses `sharp`; the
+   device list lives in `lib/splashScreens.ts`).
+3. Icons: hand-made SVG components in `components/icons/`, used instead of an icon library.
+4. Chart: own canvas engine, `components/chart/engine/MT5Chart.ts` (lightweight-charts removed).
 
 <!-- BEGIN:nextjs-agent-rules -->
 

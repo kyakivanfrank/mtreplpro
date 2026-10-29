@@ -24,8 +24,8 @@ export function TimeframeButton({
       onClick={onToggle}
       aria-expanded={open}
       aria-label="Change timeframe"
-      className={`font-semibold text-[18px] flex items-center gap-1 transition-colors ${
-        open ? 'text-accent' : 'text-chartlabel hover:text-white'
+      className={`mt5-cond text-[18px] leading-none flex items-center gap-1 transition-colors ${
+        open ? 'text-accent' : 'text-white'
       }`}
     >
       {label}
@@ -73,8 +73,8 @@ export function TimeframeStrip({
               role="option"
               aria-selected={isActive}
               onClick={() => onPick(tf)}
-              className={`px-1 text-[13px] font-semibold tabular-nums transition-colors ${
-                isActive ? 'text-accent' : 'text-chartlabel active:text-white'
+              className={`mt5-cond px-1 text-[18px] leading-none transition-colors ${
+                isActive ? 'text-accent' : 'text-white'
               }`}
             >
               {tf.label}
@@ -90,7 +90,7 @@ export function TimeframeStrip({
         <span
           aria-hidden
           className="px-1 text-[14px] leading-none tracking-[0.2em] font-semibold
-                     text-faint select-none pointer-events-none"
+                     text-white select-none pointer-events-none"
         >
           •••
         </span>
@@ -109,13 +109,24 @@ export function TimeframeStrip({
 export function ChartTools({
   autoRunning,
   autoHolding,
+  crosshairOn,
+  onToggleCrosshair,
 }: {
   autoRunning: boolean;
   autoHolding: boolean;
+  crosshairOn: boolean;
+  onToggleCrosshair: () => void;
 }) {
   return (
-    <div className="flex items-center gap-5 text-chartlabel text-[20px]">
-      <button className="hover:text-white transition-colors"><Crosshair /></button>
+    <div className="flex items-center gap-5 text-white text-[20px]">
+      <button
+        onClick={onToggleCrosshair}
+        aria-pressed={crosshairOn}
+        aria-label="Crosshair"
+        className={crosshairOn ? 'text-accent' : ''}
+      >
+        <Crosshair />
+      </button>
       <button className="hover:text-white transition-colors"><Functions /></button>
       <button className="hover:text-white transition-colors"><Shapes /></button>
 
@@ -147,7 +158,7 @@ export function ChartActions({
   onToggleTradeBar: () => void;
 }) {
   return (
-    <div className="flex items-center gap-4 text-chartlabel text-[22px]">
+    <div className="flex items-center gap-6 text-white text-[22px]">
       <button onClick={onNewOrder} aria-label="New order" className="hover:text-white transition-colors">
         <Positioners />
       </button>

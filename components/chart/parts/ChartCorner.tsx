@@ -7,16 +7,9 @@ const DOTS_HEIGHT = 28;
 const HOLD_MS = 400;
 
 /**
- * The ••• chip, and the last inch of the time axis's top rule.
- *
- * lightweight-charts fills its corner stub's border as a `borderSize × borderSize` rect — one
- * pixel, not a line across the stub's width (see `PriceAxisStub._drawBorder` in the dist) — so
- * the rule separating the candles from the time row stops dead at the price column. The hairline
- * below is that rule carried out to the right edge: same colour, same one pixel.
- *
- * Holding the chip opens the window panel. It replaced a triple tap, which was a private
- * handshake nobody would discover and which a slow finger failed anyway; a press is the ordinary
- * phone gesture for "more about this control" and cannot be triggered by an accidental tap.
+ * The ••• chip in the bottom of the price column, just above the time row. Holding it opens the
+ * replay window panel; a press is the ordinary phone gesture for "more about this control" and
+ * cannot be triggered by an accidental tap.
  */
 export default function ChartCorner({
   corner,
@@ -46,12 +39,6 @@ export default function ChartCorner({
   return (
     <>
       <div
-        aria-hidden
-        className="absolute right-0 z-20 pointer-events-none bg-[#2b2f3a]"
-        style={{ bottom: corner.height - 1, width: Math.max(0, corner.width - 1), height: 1 }}
-      />
-
-      <div
         className="absolute right-[0.5px] flex items-center -mb-[0.9px] justify-center z-20 bg-black"
         // Lifted clear of the time row so the time scale keeps the corner. Width is reduced by 1px
         // so its black background doesn't cover the vertical border line of the price axis.
@@ -63,7 +50,7 @@ export default function ChartCorner({
           onPointerCancel={release}
           onPointerLeave={release}
           aria-label="Chart tools — hold for the data window"
-          className="text-[14px] tracking-[0.2em] font-semibold text-muted hover:text-white transition-colors"
+          className="text-[14px] tracking-[0.2em] font-semibold text-white transition-colors"
         >
           •••
         </button>

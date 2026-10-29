@@ -22,17 +22,17 @@ export default function OrderItem({
   const side = sideTone(isBuy);
 
   return (
-    <div className="flex flex-col border-b border-surface-2">
-      <button onClick={onToggle} className="flex flex-col px-4 py-3 text-left w-full">
-        <div className="flex justify-between items-center mb-1 w-full">
-          <div className="flex items-center gap-1.5">
-            <span className="symbol-condensed font-semibold text-[16px] leading-none tracking-tight">{symbol}</span>
-            <span className={`text-[15px] leading-none ${side}`}>{order.kind}</span>
-            <span className={`text-[15px] leading-none ${side}`}>{order.volume.toFixed(2)}</span>
-          </div>
-          <span className="text-muted text-[15px] leading-none tabular-nums">{order.price.toFixed(digits)}</span>
+    <div className="flex flex-col">
+      <button onClick={onToggle} className="flex flex-col px-4 py-1 text-left w-full active:bg-white/5">
+        <div className="flex justify-between items-center w-full h-[26px]">
+          <span className="mt5-cond text-[17px] leading-none">
+            {symbol} <span className={side}>{order.kind} {order.volume.toFixed(2)}</span>
+          </span>
+          <span className="mt5-cond text-[17px] leading-none text-white">placed</span>
         </div>
-        <div className="text-muted text-[14px]">waiting</div>
+        <div className="text-quiet text-[17px] leading-[24px]">
+          {order.volume.toFixed(2)} / 0.00 at {order.price.toFixed(digits)}
+        </div>
       </button>
 
       {expanded && (

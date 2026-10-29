@@ -34,7 +34,7 @@ export interface AccountConfig {
   /** Server location line, e.g. "Access Point #1". */
   serverLocation: string;
   /**
-   * The ledger identifier, without its leading D/W — e.g. `EXNESSMT5REAL21-USD-32914776`.
+   * The ledger identifier, without its leading D/W — e.g. `EXNESSMT5TRIAL9-USD-32914776`.
    *
    * Blank means "work it out", and what it works out to is the same thing composed from the
    * server, the deposit currency and the account number. Typed, it wins: brokers name accounts
@@ -88,7 +88,8 @@ export interface AccountConfig {
 export const DEFAULT_ACCOUNT: AccountConfig = {
   holderName: 'PhantomPip Pro',
   brokerName: 'Exness Technologies Ltd',
-  accountNumber: '89341200',
+  // Blank on purpose: `hydrate` issues every install its own number (see there).
+  accountNumber: '',
   serverName: 'Exness-MT5Trial10',
   serverLocation: 'Access Point #1',
   accountLabel: '',
@@ -107,6 +108,9 @@ export const DEFAULT_ACCOUNT: AccountConfig = {
   symbolSuffix: 'm',
   customSuffixes: [],
 };
+
+/** The number every install used to share before each one was issued its own. */
+const LEGACY_DEFAULT_ACCOUNT = '89341200';
 
 /** The account types brokers most commonly ship. Micro is the default. */
 export const BUILT_IN_SUFFIXES: { value: string; label: string; note: string }[] = [
@@ -233,39 +237,6 @@ class AccountStore {
 
     const stored = readSetting<Partial<AccountConfig> | null>(STORAGE_KEY, null);
 
-    // If stored contains the previous default or legacy values, upgrade them to the updated defaults
-    let migrated = false;
-    if (stored) {
-      if (stored.holderName === 'NUR BIN ABDUL GAFFUR ABDUL') {
-        stored.holderName = DEFAULT_ACCOUNT.holderName;
-        migrated = true;
-      }
-      if (stored.brokerName === 'FxPro Markets Ltd.') {
-        stored.brokerName = DEFAULT_ACCOUNT.brokerName;
-        migrated = true;
-      }
-      if (stored.accountNumber === '638742155') {
-        try {
-          const oldBooks = readSetting(booksKey('638742155'), null);
-          if (oldBooks && !readSetting(booksKey(DEFAULT_ACCOUNT.accountNumber), null)) {
-            writeSetting(booksKey(DEFAULT_ACCOUNT.accountNumber), oldBooks);
-          }
-        } catch {
-          // ignore
-        }
-        stored.accountNumber = DEFAULT_ACCOUNT.accountNumber;
-        migrated = true;
-      }
-      if (stored.serverName === 'FxPro-MT5') {
-        stored.serverName = DEFAULT_ACCOUNT.serverName;
-        migrated = true;
-      }
-      if (stored.serverLocation === 'MT5 Johannesburg') {
-        stored.serverLocation = DEFAULT_ACCOUNT.serverLocation;
-        migrated = true;
-      }
-    }
-
     // Merged rather than replaced, so a config saved before a new field existed still loads.
     const merged: AccountConfig = { ...DEFAULT_ACCOUNT, ...(stored ?? {}) };
 
@@ -279,9 +250,10 @@ class AccountStore {
      * whatever number the device is holding at startup.
      */
     if (!normalizeAccountKey(merged.accountNumber)) {
-      merged.accountNumber = DEFAULT_ACCOUNT.accountNumber || newAccountNumber();
-      writeSetting(STORAGE_KEY, merged);
-    } else if (migrated) {
+      // `89341200` used to be the hard-coded default, which made every fresh install share one
+      // server-side book. A device already trading under it keeps it; everyone else gets their own.
+      const legacy = readSetting(booksKey(LEGACY_DEFAULT_ACCOUNT), null) ? LEGACY_DEFAULT_ACCOUNT : '';
+      merged.accountNumber = legacy || newAccountNumber();
       writeSetting(STORAGE_KEY, merged);
     }
 

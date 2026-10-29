@@ -21,6 +21,7 @@ import {
   setBalance as engineSetBalance,
   type PriceSnapshot,
 } from './engine';
+import { conversionSymbols } from './math';
 import { planRewind } from './rewind';
 import {
   emptyBook,
@@ -147,8 +148,35 @@ class TradingStore {
   getBook = (): Book => this.books.live;
 
 
+  /** The symbols last handed to the market store, so an unchanged book costs nothing. */
+  private watched = '';
+
   private emit(): void {
+    this.watchBook();
     this.listeners.forEach((listener) => listener());
+  }
+
+  /**
+   * Keep every symbol the book depends on ticking, whatever screen is open.
+   *
+   * Ticks only flow for symbols some subscriber has asked for, and the screens subscribe only
+   * while they are mounted. Without this, a position opened from the chart stopped receiving
+   * ticks the moment the user went to Settings — its stop loss, take profit, pending orders and
+   * stop-out all froze — and a cross pair was valued without the USD leg it converts through.
+   */
+  private watchBook(): void {
+    const book = this.books.live;
+    const symbols = new Set<string>();
+    for (const row of [...book.positions, ...book.orders]) {
+      symbols.add(row.symbol);
+      for (const pair of conversionSymbols(row.symbol)) symbols.add(pair);
+    }
+    const next = [...symbols].sort();
+    const key = next.join(',');
+    if (key === this.watched) return;
+    this.watched = key;
+    if (next.length > 0) marketStore.setSymbols('book', next);
+    else marketStore.releaseSymbols('book');
   }
 
   /* ---------- lifecycle ---------- */
@@ -163,6 +191,7 @@ class TradingStore {
     accountStore.hydrate();
     this.account = normalizeAccountKey(accountStore.getSnapshot().accountNumber);
     this.books = this.load(true);
+    this.watchBook();
 
     // Filed under the account's own key straight away. Left only in memory, the migration
     // would have to happen again on the next launch — and would stop happening at all once
@@ -559,32 +588,24 @@ class TradingStore {
    * needs localStorage, which is synchronous. It is also bounded: a few dozen rows at most.
    *
    * Deals and order history grow without bound and are only ever read by the History tab,
-   * which can afford to wait a tick. Those go to IndexedDB, which has no 5MB ceiling — so the
-   * silent write failure that used to take the balance with it after months of trading is
-   * gone, and `trimHistory` becomes a last resort rather than an expected outcome.
+   * which can afford to wait a tick. Those go to IndexedDB, which has no 5MB ceiling.
    */
   private persist(): void {
     this.localDirty = true;
+    this.saveLocal();
+    this.scheduleSync();
+  }
 
-    // The complete book, history included. No ceiling, so this is the authoritative copy.
+  /** Both device copies: the full book to IndexedDB, the history-free slice to localStorage. */
+  private saveLocal(): void {
     void dbSet('books', this.slot(), this.books);
 
-    if (writeSetting(booksKey(this.slot()), hotSlice(this.books))) {
-      this.scheduleSync();
-      return;
-    }
-
-    // The hot slice is small by construction, so a failure here means storage is refused
-    // outright rather than full. Trim anyway and retry once before giving up.
-    this.books = { live: trimHistory(this.books.live) };
-
+    // The hot slice carries no history, so a failure here means storage is refused outright
+    // (private mode), not full. Trimming history would not shrink it — it would only destroy
+    // deals for nothing — so the IndexedDB copy and the server mirror are left to stand.
     if (!writeSetting(booksKey(this.slot()), hotSlice(this.books))) {
-      // Private mode or storage disabled. IndexedDB above and the server mirror below are
-      // the remaining copies; the account is not lost, it just won't paint instantly.
       console.warn('Trading book could not be saved to this device.');
     }
-
-    this.scheduleSync();
   }
 
   /* ---------- server mirror ---------- */
@@ -625,7 +646,9 @@ class TradingStore {
       };
 
       this.books = merged;
-      writeSetting(booksKey(this.slot()), merged);
+      // Same split as `persist`: the full book (history included) must reach IndexedDB too,
+      // or a reload would show the server's positions with the old device's history.
+      this.saveLocal();
       this.emit();
     } catch {
       // Offline, or no session. The local book is authoritative until the network returns.
@@ -792,9 +815,6 @@ function promoteTickets(book: Book): Book {
 }
 
 /** How much closed history a single book keeps once storage starts pushing back. */
-const TRIM_TO = 200;
-
-/** Drop the oldest deals and settled orders. Positions and money are never touched. */
 /**
  * The half of a book that has to survive in localStorage.
  *
@@ -809,15 +829,6 @@ function hotSlice(books: Books): Books {
     balanceOps: [],
   });
   return { live: strip(books.live) };
-}
-
-function trimHistory(book: Book): Book {
-  if (book.deals.length <= TRIM_TO && book.orderHistory.length <= TRIM_TO) return book;
-  return {
-    ...book,
-    deals: book.deals.slice(-TRIM_TO),
-    orderHistory: book.orderHistory.slice(-TRIM_TO),
-  };
 }
 
 /** A book that has never been written loses to one that has, regardless of clock skew. */

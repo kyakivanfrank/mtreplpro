@@ -9,7 +9,7 @@ import { accountBody, MAX_TRADE_COMMENT, type AccountConfig } from '@/lib/accoun
  * A literal rather than the live value: the footer's job is to show what the *letters* do, and
  * threading the user's own name through a sentence that prints it three times buries the rule.
  */
-const LEDGER_EXAMPLE = 'EXNESSMT5REAL21-USD-32914776';
+const LEDGER_EXAMPLE = 'EXNESSMT5TRIAL9-USD-32914776';
 
 type Set = <K extends keyof AccountConfig>(key: K, value: AccountConfig[K]) => void;
 

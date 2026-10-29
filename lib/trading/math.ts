@@ -98,6 +98,23 @@ export function usdRate(currency: string, quotes: Record<string, QuoteState>): n
   return null;
 }
 
+/**
+ * The USD pairs `usdRate` needs to value and margin a position in `symbol` — e.g. GBPJPY needs
+ * GBPUSD (margin, base leg) and USDJPY (profit, quote leg). Only pairs this app knows are
+ * returned; whichever leg the store actually publishes is the one `usdRate` will find.
+ */
+export function conversionSymbols(symbol: string): string[] {
+  const { base, quote } = currenciesOf(symbol);
+  const out: string[] = [];
+  for (const currency of [base, quote]) {
+    if (!currency || currency === DEPOSIT_CURRENCY) continue;
+    for (const pair of [`${currency}${DEPOSIT_CURRENCY}`, `${DEPOSIT_CURRENCY}${currency}`]) {
+      if (pair !== symbol && findInstrument(pair)) out.push(pair);
+    }
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Position valuation                                                 */
 /* ------------------------------------------------------------------ */

@@ -1,7 +1,6 @@
 import React from 'react';
 import SummaryRow from '@/components/ui/SummaryRow';
 import { groupedMoney } from '@/lib/money';
-import { resultTone } from '@/components/ui/tone';
 
 /**
  * The foot of the statement: the balance and the working that produced it.
@@ -27,7 +26,7 @@ export default function BalanceSummary({
 }) {
   return (
     <>
-      <div className="px-1.5 pt-1 pb-4">
+      <div className="px-4 pt-5 pb-4">
         <SummaryRow label="Deposit" value={groupedMoney(deposit)} />
         {/*
           Signed, because the row is an entry in a sum. `book.withdrawal` accumulates positive,

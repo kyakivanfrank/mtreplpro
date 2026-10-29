@@ -97,9 +97,27 @@ function openDb(): Promise<IDBDatabase | null> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
-    request.onblocked = () => resolve(null);
+    request.onsuccess = () => {
+      const db = request.result;
+      // Another tab (or a newer deploy) wants to upgrade: step aside so it is not blocked, and
+      // let the next call here reopen at the new version.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null; // retry on the next call rather than staying in memory for the session
+      resolve(null);
+    };
+    // An older tab is holding the previous version open. Don't settle for memory permanently:
+    // this call degrades, but the next one tries again (and the old tab now closes itself on
+    // `versionchange`, above).
+    request.onblocked = () => {
+      dbPromise = null;
+      resolve(null);
+    };
   });
 
   return dbPromise;

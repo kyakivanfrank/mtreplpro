@@ -2,13 +2,18 @@ import React from 'react';
 import type { Instrument } from '@/lib/instruments';
 import type { OHLCInfo } from '@/components/chart/chartConfig';
 
-/** The symbol, timeframe and — while the window panel is open — the crosshair's OHLC readout. */
+/**
+ * The symbol, timeframe and — while the window panel is open — the crosshair's OHLC readout.
+ * The terminal's: the symbol in blue with its ▾, everything else in the axis grey, all 13pt.
+ */
 export default function ChartInfoOverlay({
   displaySymbol,
   timeframeLabel,
   instrument,
   ohlc,
   showOhlc,
+  hint,
+  rightInset,
   fmt,
 }: {
   displaySymbol: string;
@@ -16,19 +21,18 @@ export default function ChartInfoOverlay({
   instrument: Instrument | undefined;
   ohlc: OHLCInfo | null;
   showOhlc: boolean;
+  /** Replaces the description line while a mode is active, as the crosshair's hint does. */
+  hint?: string;
+  /** The price column's width: the readout stops at the plot's edge. */
+  rightInset: number;
   fmt: (price: number) => string;
 }) {
   return (
-    <div className="absolute top-0 left-0 right-0 px-3 py-2 text-[12px] font-sans tracking-tight z-10 pointer-events-none">
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {/*
-          Uncondensed, unlike the symbol in every list row. Those are columns, and the whole
-          column squashes together; this one is a title with no column to fit into, and
-          condensing it only made the chart's own label the least legible symbol on the screen.
-        */}
-        <span className="text-white font-semibold text-[13px] drop-shadow-md">{displaySymbol}</span>
-        <span className="text-white text-[9px] mr-0.5 drop-shadow-md">▼</span>
-        <span className="text-chartlabel drop-shadow-md">
+    <div style={{ right: rightInset + 4 }} className="absolute top-0 left-0 px-1 pt-[3px] text-[13px] leading-[17px] text-[#d8d8d8] z-10 pointer-events-none">
+      <div className="flex items-center gap-1 whitespace-nowrap overflow-hidden">
+        <span className="text-[#1a80e8]">{displaySymbol}</span>
+        <span className="text-[#1a80e8] text-[8px] mx-0.5">▼</span>
+        <span>
           {timeframeLabel}
           {showOhlc ? ',' : ''}
         </span>
@@ -41,13 +45,13 @@ export default function ChartInfoOverlay({
         {showOhlc &&
           (ohlc ? (
             <>
-              <span className="text-chartlabel drop-shadow-md">{fmt(ohlc.open)}</span>
-              <span className="text-chartlabel drop-shadow-md">{fmt(ohlc.high)}</span>
-              <span className="text-chartlabel drop-shadow-md">{fmt(ohlc.low)}</span>
-              <span className="text-chartlabel drop-shadow-md">{fmt(ohlc.close)}</span>
+              <span>{fmt(ohlc.open)}</span>
+              <span>{fmt(ohlc.high)}</span>
+              <span>{fmt(ohlc.low)}</span>
+              <span>{fmt(ohlc.close)}</span>
             </>
           ) : (
-            <span className="text-muted drop-shadow-md">Loading…</span>
+            <span className="text-muted">Loading…</span>
           ))}
       </div>
       {/*
@@ -55,12 +59,12 @@ export default function ChartInfoOverlay({
         so this reads "Bitcoin vs US Dollar" under the code above it. `quote` is empty for a
         broker-catalogue instrument, and then the name stands alone rather than trailing a "vs".
       */}
-      <div className="text-chartlabel text-[13px] mt-0.5 drop-shadow-md">
-        {instrument
+      <div>
+        {hint ?? (instrument
           ? instrument.quote
             ? `${instrument.base} vs ${instrument.quote}`
             : instrument.base
-          : displaySymbol}
+          : displaySymbol)}
       </div>
     </div>
   );

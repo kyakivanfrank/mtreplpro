@@ -46,12 +46,9 @@ export type SettingsRow = {
   bgClass?: string;
   /** Per-icon padding/size overrides — see IconTuning above. */
   icon?: IconTuning;
-  showChevron?: boolean;
-  /** Overlays the unread-chat count on the icon. */
-  badge?: boolean;
-  /** Renders the hamburger button on the right of the row. */
-  menuButton?: boolean;
 };
+
+/* Tile colours sampled from the real terminal's Settings screen. */
 
 export const accountRows = (mailbox: string, news: string): SettingsRow[] => [
   {
@@ -65,21 +62,21 @@ export const accountRows = (mailbox: string, news: string): SettingsRow[] => [
     title: 'Mailbox',
     subtitle: mailbox,
     Icon: MailboxIcon,
-    bgClass: 'bg-[#34AADC]',
+    bgClass: 'bg-[#59c7fa]',
   },
   {
     key: 'news',
     title: 'News',
     subtitle: news,
     Icon: NewsIcon,
-    bgClass: 'bg-[#FF9500]',
+    bgClass: 'bg-[#fea527]',
   },
   {
     key: 'tradays',
     title: 'Tradays',
     subtitle: 'Economic calendar',
     Icon: TradaysIcon,
-    bgClass: 'bg-danger',
+    bgClass: 'bg-[#d32f30]',
   },
 ];
 
@@ -89,22 +86,19 @@ export const COMMUNITY_ROWS: SettingsRow[] = [
     title: 'Chat and Messages',
     subtitle: 'Sign in to MQL5.community!',
     Icon: PointinghandIcon,
-    bgClass: 'bg-accent-ios',
-    showChevron: false,
-    badge: true,
-    menuButton: true,
+    bgClass: 'bg-[#4e7dc5]',
   },
   {
     key: 'traders-community',
     title: 'Traders Community',
     Icon: Mql5Icon,
-    bgClass: 'bg-accent-ios',
+    bgClass: 'bg-[#2c6bcc]',
   },
   {
     key: 'algo-trading',
     title: 'MQL5 Algo Trading',
     Icon: TelegramIcon,
-    bgClass: 'bg-[#34AADC]',
+    bgClass: 'bg-[#2baaed]',
   },
 ];
 
@@ -114,7 +108,7 @@ export const TOOLS_ROWS: SettingsRow[] = [
     title: 'OTP',
     subtitle: 'One-time password generator',
     Icon: KeyholeIcon,
-    bgClass: 'bg-[#4CD964]',
+    bgClass: 'bg-[#4bd963]',
   },
   {
     key: 'interface',
@@ -132,13 +126,13 @@ export const TOOLS_ROWS: SettingsRow[] = [
     key: 'charts',
     title: 'Charts',
     Icon: ChartsSectionIcon,
-    bgClass: 'bg-accent-ios',
+    bgClass: 'bg-[#1c9cff]',
   },
   {
     key: 'journal',
     title: 'Journal',
     Icon: JournalIcon,
-    bgClass: 'bg-[#FF9500]',
+    bgClass: 'bg-[#bec4d0]',
   },
   {
     key: 'settings',

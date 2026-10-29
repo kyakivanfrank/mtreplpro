@@ -7,33 +7,15 @@ import './globals.css';
 
 export const dynamic = 'force-dynamic';
 
-// Inter ships in the repo (app/fonts) rather than being fetched from Google at build or at
-// runtime -- nothing to download, nothing to fail, and it works offline once the PWA is
-// installed. One variable file covers 100-900, so every weight the UI asks for is real
-// rather than synthesised. Exposed as --font-inter so only the rows that opt in via
-// `font-inter` (the summary blocks and the price-arrow lines) leave the system stack.
-const inter = localFont({
-  src: './fonts/Inter-Variable-latin.woff2',
+// The terminal's second face. MT5 sets symbols, sides, volumes, P/L and the big quote digits in
+// Roboto Condensed and everything else in the system font; matched glyph-for-glyph against the
+// real app's screenshots (see docs/MT5_PARITY.md). Self-hosted so it renders identically on every
+// phone and offline. Variable 100-900, Latin subset.
+const mt5Condensed = localFont({
+  src: './fonts/RobotoCondensed-Variable-latin.woff2',
   weight: '100 900',
   style: 'normal',
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-// Outfit Medium, loaded from public/ rather than copied into app/fonts because that file is
-// the source: it is a hand-edited cut, not the stock Google release, and a second copy is a
-// second thing to forget to re-edit. next/font hashes and serves it from /_next/static/media
-// either way, so nothing is fetched at runtime.
-//
-// One static weight, declared as the 500 it actually is. Every element that opts in already
-// carries `font-semibold` from its system-stack days, and a browser answers that on a
-// single-weight family by smearing the glyphs sideways -- see the `font-synthesis-weight`
-// rule in globals.css, which turns that off so the edited outlines render as drawn.
-const outfit = localFont({
-  src: '../public/OFBold-Frank.woff',
-  weight: '500',
-  style: 'normal',
-  variable: '--font-outfit',
+  variable: '--font-mt5-condensed',
   display: 'swap',
 });
 
@@ -67,7 +49,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`bg-black ${inter.variable} ${outfit.variable}`}>
+    <html lang="en" className={`bg-black ${mt5Condensed.variable}`}>
       <body className="bg-black">
         <PwaRegister />
         <SplashScreen />

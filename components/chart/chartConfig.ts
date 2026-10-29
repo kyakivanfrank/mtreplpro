@@ -1,5 +1,4 @@
-import type { CandlestickData, DeepPartial, ChartOptions, Time } from 'lightweight-charts';
-import type { Candle, TimeframeKey } from '@/lib/market/types';
+import type { TimeframeKey } from '@/lib/market/types';
 
 /* ------------------------------------------------------------------ */
 /*  Candle colours                                                     */
@@ -46,17 +45,8 @@ export const DEFAULT_CHART_SYMBOL = 'XAUUSD';
 /** Opening timeframe for a device that has never set one. A stored preference wins over it. */
 export const DEFAULT_TIMEFRAME: TimeframeKey = 'M15';
 
-/**
- * Bars visible after a reseed.
- *
- * `fitContent()` used to run here, which fits *everything* into the viewport — fine at a few
- * hundred bars, wrong at ten thousand, where opening a chart showed weeks of minutes as a smear.
- * MT5 opens on the recent end at a readable density and leaves the rest to be scrolled into.
- */
-export const VISIBLE_BARS = 150;
-
-/** The one-click trade row's open height. Matches the `h-[48px]` on the row itself. */
-export const TRADE_BAR_HEIGHT = 48;
+/** The one-click trade row's open height: 40pt on the real terminal. */
+export const TRADE_BAR_HEIGHT = 40;
 
 /**
  * The chart's three mutually exclusive surfaces, or none of them.
@@ -94,114 +84,3 @@ export const LEVEL_COLORS: Record<LevelField, string> = {
   sl: '#FF453A',
   tp: '#30D158',
 };
-
-/* ------------------------------------------------------------------ */
-/*  lightweight-charts options                                         */
-/* ------------------------------------------------------------------ */
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** UTC, to match every other stamp in the app. */
-function tickMarkFormatter(time: number): string {
-  const d = new Date(time * 1000);
-  const day = d.getUTCDate();
-  const month = MONTHS[d.getUTCMonth()];
-  const hours = String(d.getUTCHours()).padStart(2, '0');
-  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${day} ${month} ${hours}:${minutes}`;
-}
-
-/** Everything the chart is created with. Pure data, so the init effect stays readable. */
-export const CHART_OPTIONS: DeepPartial<ChartOptions> = {
-  autoSize: true,
-  layout: {
-    background: { color: '#000000' },
-    textColor: '#8e8e93',
-    /*
-     * Both axes, not just the time row -- lightweight-charts documents this as "font size of
-     * text on scales" and exposes no per-scale override, so the price labels shrink with it.
-     *
-     * The time row's height and the price column's width are both read back off the chart in
-     * `useChartInstance.measureCorner`, so the ••• chip and the corner hairline follow this
-     * number on their own. Nothing else needs changing when it moves.
-     */
-    fontSize: 11,
-    attributionLogo: false,
-  },
-  grid: {
-    vertLines: { visible: false },
-    horzLines: { visible: false },
-  },
-  crosshair: {
-    mode: 0, // Normal
-    horzLine: {
-      visible: true,
-      style: 2, // Dashed
-      color: 'rgba(255, 255, 255, 0.25)',
-      width: 1,
-      labelVisible: true,
-      labelBackgroundColor: '#2962FF',
-    },
-    vertLine: {
-      visible: true,
-      style: 2,
-      color: 'rgba(255, 255, 255, 0.25)',
-      width: 1,
-      labelVisible: true,
-      labelBackgroundColor: '#363a45',
-    },
-  },
-  rightPriceScale: {
-    visible: true,
-    borderVisible: true,
-    borderColor: '#2b2f3a',
-    scaleMargins: { top: 0.1, bottom: 0.1 },
-  },
-  timeScale: {
-    visible: true,
-    borderVisible: true,
-    borderColor: '#2b2f3a',
-    timeVisible: true,
-    secondsVisible: false,
-    tickMarkFormatter,
-  },
-};
-
-export const CANDLE_SERIES_OPTIONS = {
-  upColor: BAR_UP,
-  downColor: BAR_DOWN,
-  borderUpColor: BAR_UP,
-  borderDownColor: BAR_DOWN,
-  wickUpColor: BAR_UP,
-  wickDownColor: BAR_DOWN,
-  priceFormat: {
-    type: 'price' as const,
-    precision: 5,
-    minMove: 0.00001,
-  },
-};
-
-/** The price format for an instrument's decimal count. */
-export function priceFormatFor(digits: number) {
-  return { type: 'price' as const, precision: digits, minMove: 10 ** -digits };
-}
-
-/**
- * A bar, coloured for which side of the seeker it falls on.
- *
- * Played bars carry no per-bar colours at all, so they fall through to the series options and
- * render byte-for-byte as they did before ghosting existed. Only the future is touched.
- */
-export function toCandleData(candle: Candle, ghostAfter: number): CandlestickData<Time> {
-  const base = {
-    time: candle.time as Time,
-    open: candle.open,
-    high: candle.high,
-    low: candle.low,
-    close: candle.close,
-  };
-
-  if (candle.time <= ghostAfter) return base;
-
-  const ghost = candle.close >= candle.open ? GHOST_UP : GHOST_DOWN;
-  return { ...base, color: ghost, borderColor: ghost, wickColor: ghost };
-}
