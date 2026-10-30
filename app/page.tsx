@@ -60,11 +60,15 @@ export default function Home() {
         Content Area.
 
         The safe-area padding lives HERE and not on the shell above: this element is
-        absolutely positioned, and `inset-0` resolves against the shell's padding box, so
-        padding applied up there would be silently ignored and the header would sit under
-        the notch / Dynamic Island in standalone.
+        positioned with `inset-0`, so padding applied up there would be silently ignored and
+        the header would sit under the notch / Dynamic Island in standalone.
+
+        `fixed`, not `absolute`, for iOS 26's top-edge blur: the full-screen sheets (Settings'
+        Cancel / Save) never had it, and they are exactly this -- a fixed, opaque black box
+        holding the header. WebKit hit-tests the top edge for a fixed container and paints its
+        colour instead of the blur when it finds one.
       */}
-      <div className="absolute bg-black inset-0 pt-[var(--safe-top)]">
+      <div className="fixed bg-black inset-0 pt-[var(--safe-top)]">
         {activeTab === 'settings' && <SettingsView />}
         {activeTab === 'history' && <HistoryView />}
         {activeTab === 'trade' && <TradeView />}
@@ -76,9 +80,11 @@ export default function Home() {
         iOS 26 draws a Liquid Glass blur ~40pt down from the top of an installed web app, over
         whatever is there -- it was softening every header title and button. WebKit skips it
         when a fixed, full-width box at the top edge paints one solid colour, so this band
-        (black, as the real terminal's status area is) is that box.
+        (black, as the real terminal's status area is) is that box. Not `pointer-events-none`:
+        that hides it from the hit test WebKit finds the box with, and the status bar has
+        nothing to tap anyway.
       */}
-      <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-[55] h-[var(--safe-top)] bg-black" />
+      <div aria-hidden className="fixed inset-x-0 top-0 z-[55] h-[var(--safe-top)] bg-black" />
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>

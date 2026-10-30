@@ -32,7 +32,7 @@ export default function SettingsView() {
     key === 'settings' ? () => setAccountOpen(true) : undefined;
 
   return (
-    <ViewLayout headerCenter={<div className="font-semibold text-[17px]">Settings</div>}>
+    <ViewLayout headerCenter={<div className="font-semibold text-[17px]">Settings</div>} edge="fade">
       <div className="px-4 space-y-[20px]">
         <Card>
           <AccountCard account={account} onOpen={() => setAccountsOpen(true)} />

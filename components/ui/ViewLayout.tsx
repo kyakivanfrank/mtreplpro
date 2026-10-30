@@ -70,9 +70,11 @@ interface ViewLayoutProps {
    *
    * `hard` (Settings, Trade, Quotes): pure black at rest; once anything scrolls beneath, a
    * frosted bar with a hairline fades in. `soft` (History): no bar at all, the content dims and
-   * blurs out towards the top behind floating controls.
+   * blurs out towards the top behind floating controls. `fade` (Settings): like `hard`, but the
+   * bar is black fading to see-through rather than a grey frost. `fade-light` (Quotes, Trade,
+   * History): the same, thinner.
    */
-  edge?: 'hard' | 'soft';
+  edge?: 'hard' | 'soft' | 'fade' | 'fade-light';
   /**
    * Laid over the header's three slots, inside the header itself.
    *

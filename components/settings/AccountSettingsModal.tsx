@@ -50,7 +50,7 @@ export default function AccountSettingsModal({ open, config, onClose }: AccountS
     <Portal>
       <div className="fixed inset-0 z-[70] flex flex-col bg-black text-white font-sans pt-[var(--safe-top)]">
         {/* Header */}
-        <div className="pt-4 pb-4 px-4 flex justify-between items-center relative shrink-0">
+        <div className="pt-2 pb-4 px-4 flex justify-between items-center relative shrink-0">
           <div className="flex-1 flex justify-start z-10">
             <button onClick={onClose} className="text-accent text-[17px]">Cancel</button>
           </div>

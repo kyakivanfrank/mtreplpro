@@ -57,6 +57,7 @@ export default function QuotesView({ onOpenChart }: QuotesViewProps) {
             </button>
           </div>
         }
+        edge="fade-light"
       >
         <div className="pb-2">
           <div className="flex flex-col">

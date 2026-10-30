@@ -806,8 +806,29 @@ img {
   backdrop-filter: blur(20px) saturate(180%);
 }
 
-.view-header[data-edge='hard'][data-scrolled]::before {
+.view-header[data-edge='hard'][data-scrolled]::before,
+.view-header[data-edge='fade'][data-scrolled]::before,
+.view-header[data-edge='fade-light'][data-scrolled]::before {
   opacity: 1;
+}
+
+/* Quotes, Trade, History: Settings' black fade, thinner -- no fully solid black even at the top,
+   and a stronger blur doing the work the fill no longer does, so it reads see-through but soft. */
+.view-header[data-edge='fade-light']::before {
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 35%, rgba(0, 0, 0, 0.1) 100%);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+/*
+ * Settings: black, never grey. Solid at the top edge, thinning slowly to a see-through black
+ * at the bottom, with the blur behind it -- no tint and no hairline, so the bar reads as the
+ * black status band running down into the content rather than as a grey slab.
+ */
+.view-header[data-edge='fade']::before {
+  background: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.7) 45%, rgba(0, 0, 0, 0.3) 100%);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
 }
 
 /* Blur only, no darkening: a dark fill here read as the header's own text being eaten away. */

@@ -350,8 +350,9 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
           />
         ) : null
       }
-      // Same 44pt row as every other header; the chart frame starts directly under it.
-      headerClassName="min-h-[44px] px-4 bg-transparent"
+      // Same 44pt row as every other header; the chart frame starts directly under it. Lifted
+      // 4px into the gap under the status bar, which read as too much air above the toolbar.
+      headerClassName="min-h-[44px] -mt-[4px] px-4 bg-transparent"
       /*
         Cleared for the pill, not for the nav's whole footprint. `--nav-total-height` includes the
         20px of air above the pill, which is there so a scrolling list can fade out. The chart
