@@ -11,8 +11,9 @@ export default function PositionsHeading({ onBulk }: { onBulk: () => void }) {
   return (
     <div className="sticky-bar sticky z-20 top-0 flex justify-between items-center px-4 h-[30px]">
       <span className="mt5-cond text-[15px] leading-none">Positions</span>
-      <button onClick={onBulk} aria-label="Bulk operations" className="text-[#6c6c6c] -mr-1 p-1">
-        <DotsHorizontalIcon />
+      {/* Heavier than the icon's default: 25.5px across, with dots about 4.7px wide. */}
+      <button onClick={onBulk} aria-label="Bulk operations" className="text-[#8e8e93] -mr-1">
+        <DotsHorizontalIcon width={25.5} height={25.5} dot={2.2} />
       </button>
     </div>
   );

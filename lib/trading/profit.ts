@@ -38,6 +38,20 @@ export function profitColor(value: number): string {
 }
 
 /**
+ * The same rule as a class, for text in the page.
+ *
+ * Classes rather than the hex above because globals.css repaints `text-accent` and `text-danger`
+ * in Display P3 -- the native app's blue and red are P3 colours, and the hex, being sRGB, renders
+ * visibly duller beside them. The hex stays for the canvas chart, which draws in sRGB.
+ */
+export function profitTone(value: number): string {
+  const color = profitColor(value);
+  if (color === PROFIT_UP) return 'text-accent';
+  if (color === PROFIT_DOWN) return 'text-danger';
+  return 'text-white';
+}
+
+/**
  * Total open profit across the book, live.
  *
  * Subscribes to quotes for exactly the symbols currently held, so a component using this

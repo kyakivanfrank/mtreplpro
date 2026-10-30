@@ -535,6 +535,33 @@ img {
   transition: color 160ms ease 120ms;
 }
 
+/* Selected Trade tab while the book is losing: the terminal's red, as the header total. */
+.floating-nav-item.active.is-losing {
+  color: #F04534;
+}
+
+/*
+ * The terminal's blue and red are Display P3 colours.
+ *
+ * Measured off P3 screenshots of the real app and this one side by side: the native blue reads
+ * (10,132,255) and the red (240,69,52) in P3, while the same numbers written as CSS hex are sRGB
+ * and land at (58,130,247) and (222,83,62) -- visibly duller. Writing the measured values in
+ * P3 is what makes them match. Hex stays as the fallback, and for the canvas chart.
+ */
+@supports (color: color(display-p3 1 1 1)) {
+  :root {
+    --p3-accent: color(display-p3 0.0392 0.5176 1);
+    --p3-danger: color(display-p3 0.9412 0.2706 0.2039);
+  }
+  .text-accent,
+  .floating-nav-item.active { color: var(--p3-accent); }
+  .text-danger,
+  .floating-nav-item.active.is-losing { color: var(--p3-danger); }
+  .bg-accent { background-color: var(--p3-accent); }
+  .bg-accent\/50 { background-color: color(display-p3 0.0392 0.5176 1 / 0.5); }
+  .ring-accent { --tw-ring-color: var(--p3-accent); }
+}
+
 /* History's segmented control keeps its selected label white; only the pill marks it. */
 .floating-nav-item.active.is-plain {
   color: #ffffff;

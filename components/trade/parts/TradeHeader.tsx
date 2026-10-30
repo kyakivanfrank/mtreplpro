@@ -1,7 +1,7 @@
 import React from 'react';
 import CreditCardIcon from '@/components/icons/CreditCard';
 import PlusIcon from '@/components/icons/Plus';
-import { profitColor } from '@/lib/trading/profit';
+import { profitTone } from '@/lib/trading/profit';
 import { groupedMoney } from '@/lib/money';
 
 /* ------------------------------------------------------------------ */
@@ -35,10 +35,7 @@ export function TradeHeaderCenter({
   openProfit: number;
 }) {
   return (
-    <div
-      className="mt5-cond text-[23px] leading-none"
-      style={{ color: profitColor(holding ? openProfit : 0) }}
-    >
+    <div className={`mt5-cond text-[23px] leading-none ${profitTone(holding ? openProfit : 0)}`}>
       {holding ? `${groupedMoney(openProfit)} USD` : 'USD'}
     </div>
   );

@@ -54,8 +54,11 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   // selection.
   const openProfit = useOpenProfit();
   const losing = profitColor(openProfit) === PROFIT_DOWN;
-  const itemStyle = (index: number) =>
-    index === activeIndex && navItems[index].id === 'trade' && losing ? { color: PROFIT_DOWN } : undefined;
+  // A class, not an inline colour: globals.css paints it in Display P3 like the rest of the red.
+  const itemClass = (index: number) =>
+    `${ITEM_CLASS} ${index === activeIndex ? 'active' : ''} ${
+      index === activeIndex && navItems[index].id === 'trade' && losing ? 'is-losing' : ''
+    }`;
 
   // The bar's swell, restarted on every hop.
   useEffect(() => {
@@ -72,7 +75,7 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   const lens = (
     <div className="flex h-full w-full px-[4%]">
       {navItems.map((item, index) => (
-        <div key={item.id} className={`${ITEM_CLASS} ${index === activeIndex ? 'active' : ''}`} style={itemStyle(index)}>
+        <div key={item.id} className={itemClass(index)}>
           <ItemFace Icon={item.Icon} label={item.label} />
         </div>
       ))}
@@ -101,8 +104,7 @@ export default function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
             }}
             onClick={() => onTabChange(item.id)}
             aria-current={index === activeIndex ? 'page' : undefined}
-            className={`${ITEM_CLASS} ${index === activeIndex ? 'active' : ''}`}
-            style={itemStyle(index)}
+            className={itemClass(index)}
           >
             <ItemFace Icon={item.Icon} label={item.label} />
           </button>
