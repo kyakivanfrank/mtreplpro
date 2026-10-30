@@ -55,6 +55,9 @@ export default function HistoryView() {
       headerCenter={<HistoryHeaderCenter tab={tab} onChange={setTab} />}
       headerRight={<HistoryHeaderRight />}
       edge="soft"
+      // The default plus a few px on top: flush, the top edge of the tab strip and its two
+      // circles was clipped against the black status band above.
+      headerClassName="min-h-[54px] pt-[4px] pb-[10px] px-4"
     >
       <HistoryList
         tab={tab}
