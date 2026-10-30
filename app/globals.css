@@ -813,11 +813,28 @@ img {
 }
 
 /* Quotes, Trade, History: Settings' black fade, thinner -- no fully solid black even at the top,
-   and a stronger blur doing the work the fill no longer does, so it reads see-through but soft. */
+   and a lighter blur, so the rows passing under it stay readable but soft. */
 .view-header[data-edge='fade-light']::before {
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 35%, rgba(0, 0, 0, 0.1) 100%);
-  -webkit-backdrop-filter: blur(24px);
-  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Trade and History, where the open and closed trades scroll under the bar: the effect pared
+   right back -- barely any blur and a light tint, so the rows stay legible as they pass. */
+.view-header[data-edge='fade-min'][data-scrolled]::before {
+  opacity: 1;
+}
+
+.view-header[data-edge='fade-min']::before {
+  /* A visible black-to-clear fade from the top, running 28px past the bar so it ends softly
+     over the first row instead of at the bar's edge. */
+  background: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.75) 30%, rgba(0, 0, 0, 0.3) 65%, rgba(0, 0, 0, 0) 100%);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  bottom: -28px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
 }
 
 /*

@@ -88,7 +88,7 @@ export default function TradeView() {
       headerCenter={<TradeHeaderCenter holding={holding} openProfit={summary.openProfit} />}
       headerRight={<TradeHeaderRight />}
       backdrop={<TradeWatermark busy={busy} />}
-      edge="fade-light"
+      edge="fade-min"
     >
       <AccountSummary summary={summary} holding={holding} />
 
