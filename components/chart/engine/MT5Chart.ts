@@ -52,7 +52,21 @@ type Gesture =
   | { kind: 'pan'; lastX: number; lastY: number }
   | { kind: 'scale-price'; lastY: number }
   | { kind: 'scale-time'; lastX: number }
-  | { kind: 'pinch'; startDist: number; startSpacing: number; anchorIndex: number; anchorX: number; following: boolean }
+  | {
+      kind: 'pinch';
+      /** Undecided until the fingers have moved: then sideways zooms time, up-down stretches price. */
+      axis: 'none' | 'time' | 'price';
+      spanX: number;
+      spanY: number;
+      startSpacing: number;
+      anchorIndex: number;
+      anchorX: number;
+      following: boolean;
+      startTop: number;
+      startBottom: number;
+      anchorPrice: number;
+      anchorY: number;
+    }
   | { kind: 'crosshair' };
 
 type Zone = 'plot' | 'price' | 'time';
@@ -94,6 +108,19 @@ const CROSS = 'rgba(255, 255, 255, 0.85)';
 
 const MIN_SPACING = 1;
 const MAX_SPACING = 60;
+/** Bars across the plot when a chart opens or is double-tapped back to the end. */
+const DEFAULT_BARS = 80;
+/** How far the finger spans must change before a pinch commits to an axis. */
+const PINCH_LOCK = 10;
+/**
+ * Added to both spans when taking their ratio. Without it a pinch that started with the fingers
+ * nearly in line (a few px apart on that axis) turned every pixel of movement into a huge zoom.
+ */
+const PINCH_SOFT = 24;
+/** Panned to within this many px of the newest bar counts as back at the end (following again). */
+const FOLLOW_SNAP_PX = 16;
+/** Vertical travel before a free-movement drag takes the scale off auto fit. */
+const VERTICAL_TAKE_PX = 24;
 const TAP_MS = 300;
 const LONG_PRESS_MS = 500;
 const SLOP = 6;
@@ -139,7 +166,11 @@ export class MT5Chart {
 
   /** null = auto scale. */
   private manualScale: { top: number; bottom: number } | null = null;
-  private freeMove = false;
+  /**
+   * On from the start (owner's choice): a drag moves the chart up and down as well as sideways.
+   * A new symbol or timeframe still opens fitted, because it drops the held scale.
+   */
+  private freeMove = true;
 
   private bid: number | null = null;
   private marks: PriceMark[] = [];
@@ -399,10 +430,13 @@ export class MT5Chart {
     return found;
   }
 
+  private defaultSpacing(): number {
+    return Math.min(MAX_SPACING, Math.max(3, this.plotWidth() / DEFAULT_BARS || 6));
+  }
+
   private resetView(): void {
-    const w = this.plotWidth();
-    // Opens on the recent end at a readable density, about 120 bars across.
-    this.spacing = Math.min(MAX_SPACING, Math.max(2, w / 120 || 6));
+    // Opens on the recent end at a readable density.
+    this.spacing = this.defaultSpacing();
     this.following = true;
     this.rightIndex = this.endIndex();
     this.initialised = this.width > 0;
@@ -411,7 +445,8 @@ export class MT5Chart {
   private clampView(): void {
     if (this.bars.length === 0) return;
     const w = this.plotWidth();
-    const max = this.bars.length - 1 + 0.5 + (w * 0.5) / this.spacing;
+    // Up to 80% of the plot can be empty space past the newest bar, to look ahead into.
+    const max = this.bars.length - 1 + 0.5 + (w * 0.8) / this.spacing;
     const min = Math.min(max, (w * 0.2) / this.spacing);
     this.rightIndex = Math.min(max, Math.max(min, this.rightIndex));
   }
@@ -835,13 +870,20 @@ export class MT5Chart {
       this.clearLongPress();
       const [a, b] = [...this.pointers.values()];
       const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
       this.gesture = {
         kind: 'pinch',
-        startDist: Math.max(10, Math.abs(a.x - b.x)),
+        axis: 'none',
+        spanX: Math.abs(a.x - b.x),
+        spanY: Math.abs(a.y - b.y),
         startSpacing: this.spacing,
         anchorIndex: this.xToIndex(midX),
         anchorX: midX,
         following: this.following,
+        startTop: this.manualScale?.top ?? this.scaleTop,
+        startBottom: this.manualScale?.bottom ?? this.scaleBottom,
+        anchorPrice: this.yToPrice(midY),
+        anchorY: midY,
       };
       return;
     }
@@ -884,8 +926,28 @@ export class MT5Chart {
     if (g.kind === 'pinch') {
       if (this.pointers.size < 2) return;
       const [a, b] = [...this.pointers.values()];
-      const dist = Math.max(10, Math.abs(a.x - b.x));
-      this.spacing = Math.min(MAX_SPACING, Math.max(MIN_SPACING, (g.startSpacing * dist) / g.startDist));
+      const spanX = Math.abs(a.x - b.x);
+      const spanY = Math.abs(a.y - b.y);
+      if (g.axis === 'none') {
+        // Commit to one axis, so a sideways pinch never stretches the candles by accident.
+        const dx = Math.abs(spanX - g.spanX);
+        const dy = Math.abs(spanY - g.spanY);
+        if (Math.max(dx, dy) < PINCH_LOCK) return;
+        g.axis = dy > dx ? 'price' : 'time';
+      }
+
+      if (g.axis === 'price') {
+        // Fingers apart = taller candles. The price between the fingers stays between them.
+        const factor = Math.max(0.05, (spanY + PINCH_SOFT) / (g.spanY + PINCH_SOFT));
+        const range = (g.startTop - g.startBottom) / factor;
+        const top = g.anchorPrice + (g.anchorY / (this.plotHeight() || 1)) * range;
+        this.manualScale = { top, bottom: top - range };
+        this.invalidate();
+        return;
+      }
+
+      const factor = (spanX + PINCH_SOFT) / (g.spanX + PINCH_SOFT);
+      this.spacing = Math.min(MAX_SPACING, Math.max(MIN_SPACING, g.startSpacing * factor));
       if (g.following) {
         this.rightIndex = this.endIndex();
       } else {
@@ -914,9 +976,6 @@ export class MT5Chart {
         this.gesture = { kind: 'pan', lastX: x, lastY: y };
         this.dragging = true;
         this.velocityY = 0;
-        // Free movement outlives a timeframe change or a scale reset; take the scale back here
-        // so the vertical half of the drag always works.
-        if (this.freeMove) this.takeScale();
       }
       return;
     }
@@ -932,7 +991,13 @@ export class MT5Chart {
       g.lastX = x;
       g.lastY = y;
       this.panPixels(dx);
-      if (this.freeMove) this.panVertical(dy);
+      if (this.freeMove) {
+        // The scale is only taken off auto fit once the drag is clearly vertical, so a sideways
+        // scroll through history keeps the candles fitted.
+        const ty = Math.abs(y - pointer.startY);
+        if (!this.manualScale && ty > VERTICAL_TAKE_PX && ty > Math.abs(x - pointer.startX) * 0.5) this.takeScale();
+        this.panVertical(dy);
+      }
       this.invalidate();
       return;
     }
@@ -1006,8 +1071,9 @@ export class MT5Chart {
     if (dx === 0) return;
     this.rightIndex -= dx / this.spacing;
     this.clampView();
-    // Back at the end means following again; anywhere else is a fixed view.
-    this.following = this.rightIndex >= this.endIndex() - 0.5;
+    // Back at the end means following again. Anywhere else, including out in the empty space past
+    // the newest bar, is a fixed view: the space stays open and new bars grow into it.
+    this.following = Math.abs(this.rightIndex - this.endIndex()) <= Math.max(0.5, FOLLOW_SNAP_PX / this.spacing);
   }
 
   /** Free movement's vertical half: slides the held scale with the finger. */

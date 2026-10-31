@@ -90,16 +90,21 @@ clock, monotonic), so candles bucket correctly.
   price; dashed line with `SELL 0.01, +1.55 USD` always shown.
 - **Crosshair** (toolbar button): dashed white lines, small blue centre cross, white price and time
   boxes, OHLC appended to the symbol line, hint “Move crosshair or tap the chart to switch to a ruler”.
-- **Gestures**: one-finger pan with momentum; pinch zoom (anchored at the right edge while
-  following the newest bar, else at the fingers); drag the price column to stretch/squash the scale;
-  double-tap it to reset; long-press it for *Reset vertical scale / Free chart movement*; drag the
-  time row to zoom; tap the plot for the *Trade / Indicators / Objects / Settings / Cancel* menu
+- **Gestures**: one-finger pan with momentum; pinch locks to an axis once the fingers move —
+  sideways zooms time (anchored at the right edge while following the newest bar, else at the
+  fingers), up-down stretches the candles taller/shorter about the price between the fingers;
+  drag the price column to stretch/squash the scale; double-tap it to reset; long-press it for
+  *Reset vertical scale / Free chart movement*; drag the time row to zoom. Free movement is on by
+  default (owner's choice) but only leaves auto fit once a drag is clearly vertical; a new
+  symbol/timeframe opens fitted at 80 bars across. Panning to within 16px of the end follows the
+  newest bar; panning past it (up to 80% of the plot) holds the empty space open — new bars grow
+  into it instead of snapping the view back; tap the plot for the *Trade / Indicators / Objects / Settings / Cancel* menu
   (“Trade” opens the order ticket). While panning, the blue dashed end-of-data marker shows.
 - Candles: teal/coral; bodies ~68% of spacing; plain high–low bars when zoomed far out.
 
 ## 6. Other screens
 
-- **One-click bar**: at the bottom, 40 pt, both buttons coloured by the last tick.
+- **One-click bar**: at the top of the chart, under the toolbar (owner's choice; the real app docks it at the bottom), 40 pt, both buttons coloured by the last tick.
 - **Quotes**: round list button left, edit + search pill right, no search bar, blue corner marker on
   the selected row.
 - **Settings**: Demo corner ribbon, MT5's measured tile colours, the fake chat badge and blue round

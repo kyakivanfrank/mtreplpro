@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 // real app's screenshots (see docs/MT5_PARITY.md). Self-hosted so it renders identically on every
 // phone and offline. Variable 100-900, Latin subset.
 const mt5Condensed = localFont({
-  src: './fonts/RobotoCondensed-Variable-latin.woff2',
+  src: './fonts/RobotoCondensed-Variable-latin-frank.woff2',
   weight: '100 900',
   style: 'normal',
   variable: '--font-mt5-condensed',

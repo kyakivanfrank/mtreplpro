@@ -46,11 +46,12 @@ function PriceButton({
 }
 
 /**
- * The one-click trade bar, docked above the tab bar as on the terminal.
+ * The one-click trade bar, docked at the top of the chart, under the toolbar (owner's choice; the
+ * terminal docks it above the tab bar).
  *
  * Two transitions on two elements doing one thing: the outer box animates its *height*, so the
- * chart genuinely gives up the space rather than being covered, and the inner bar slides down out
- * of it, so the row's bottom edge stays pinned to the tab bar the whole way.
+ * chart genuinely gives up the space rather than being covered, and the inner bar slides up out
+ * of it, so the row's top edge stays pinned under the toolbar the whole way.
  *
  * Both buttons take the last tick's direction — red together on a down tick, blue together on an
  * up one — rather than a fixed red sell and blue buy.
@@ -98,7 +99,7 @@ export default function QuickTradeBar({
         className="flex items-stretch w-full"
         style={{
           height: TRADE_BAR_HEIGHT,
-          transform: open ? 'translate3d(0, 0, 0)' : 'translate3d(0, 100%, 0)',
+          transform: open ? 'translate3d(0, 0, 0)' : 'translate3d(0, -100%, 0)',
           transition: `transform ${transition}`,
         }}
       >

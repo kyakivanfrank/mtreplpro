@@ -368,6 +368,19 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
       wrapperClassName="pb-[calc(var(--nav-gap-bottom)+var(--nav-pill-height)+0px)]"
       contentClassName="flex flex-col relative bg-black min-h-0 overflow-hidden"
     >
+      <QuickTradeBar
+        open={tradeBarOpen}
+        bid={formatBigPrice(lastBid)}
+        ask={formatBigPrice(lastAsk)}
+        hasBid={lastBid !== null}
+        hasAsk={lastAsk !== null}
+        rising={quote?.direction === 'up'}
+        symbol={symbol}
+        volume={tradeVolume}
+        onVolumeChange={setVolume}
+        onTrade={trade}
+      />
+
       {/* ===== Chart Area ===== */}
       <div className="flex-1 relative min-h-0 bg-black w-full">
         <ChartInfoOverlay
@@ -552,19 +565,6 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
 
         <ChartCorner corner={corner} active={setupOpen} onHold={() => toggleMode('setup')} />
       </div>
-
-      <QuickTradeBar
-        open={tradeBarOpen}
-        bid={formatBigPrice(lastBid)}
-        ask={formatBigPrice(lastAsk)}
-        hasBid={lastBid !== null}
-        hasAsk={lastAsk !== null}
-        rising={quote?.direction === 'up'}
-        symbol={symbol}
-        volume={tradeVolume}
-        onVolumeChange={setVolume}
-        onTrade={trade}
-      />
 
       <CenterDialog
         open={menuOpen}
