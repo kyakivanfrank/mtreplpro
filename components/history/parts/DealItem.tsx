@@ -32,7 +32,7 @@ export default function DealItem({
         </span>
       </div>
       {/* Same size as the Trade tab's price line on the real terminal, not a smaller caption. */}
-      <div className="mt5-price-line flex justify-between items-center text-quiet text-[17px] leading-[24px]">
+      <div className="mt5-price-line flex justify-between items-center text-quiet text-[14px] leading-[24px]">
         <span>
           {showTicket && <span>#{deal.ticket} </span>}
           {deal.openPrice.toFixed(digits)} → {deal.closePrice.toFixed(digits)}

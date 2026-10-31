@@ -33,7 +33,7 @@ export default function HistoryList({
   ledger: LedgerRow[];
   orders: OrderRecord[];
   toBrokerSymbol: (display: string) => string;
-  balanceOpName: (amount: number) => string;
+  balanceOpName: (op: { id?: string; amount: number; time: number }) => string;
 }) {
   if (tab === 'Orders') {
     return (
@@ -72,7 +72,7 @@ export default function HistoryList({
             <BalanceRow
               key={row.op!.id}
               op={row.op!}
-              account={balanceOpName(row.op!.amount)}
+              account={balanceOpName(row.op!)}
             />
           )
         )

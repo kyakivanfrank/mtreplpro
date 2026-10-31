@@ -29,19 +29,15 @@ export interface AccountConfig {
   holderName: string;
   brokerName: string;
   accountNumber: string;
-  /** Trade server, e.g. "Exness-MT5Trial9". */
+  /** Trade server, e.g. "Exness-MT5Real32". */
   serverName: string;
   /** Server location line, e.g. "Access Point #1". */
   serverLocation: string;
   /**
-   * The ledger identifier, without its leading D/W — e.g. `EXNESSMT5TRIAL9-USD-32914776`.
-   *
-   * Blank means "work it out", and what it works out to is the same thing composed from the
-   * server, the deposit currency and the account number. Typed, it wins: brokers name accounts
-   * in shapes no rule reproduces, and the one place that string is read is a row claiming to
-   * quote what the server wrote.
+   * The payment system named on every deposit and withdrawal — `ngbank` in
+   * `D-ngbank-USD-96f61e93f49b45`. See `balanceOpName`.
    */
-  accountLabel: string;
+  ledgerBank: string;
   /**
    * The comment carried by every open position — what MT5 shows under a trade's stop and
    * target. Blank means no comment, and no line for one.
@@ -86,13 +82,13 @@ export interface AccountConfig {
 }
 
 export const DEFAULT_ACCOUNT: AccountConfig = {
-  holderName: 'PhantomPip Pro',
+  holderName: 'Prime',
   brokerName: 'Exness Technologies Ltd',
   // Blank on purpose: `hydrate` issues every install its own number (see there).
   accountNumber: '',
-  serverName: 'Exness-MT5Trial10',
+  serverName: 'Exness-MT5Real32',
   serverLocation: 'Access Point #1',
-  accountLabel: '',
+  ledgerBank: 'ngbank',
   tradeComment: '',
 
   // Off, and off is the only safe default: a mode that trades an account is not something a
@@ -239,6 +235,14 @@ class AccountStore {
 
     // Merged rather than replaced, so a config saved before a new field existed still loads.
     const merged: AccountConfig = { ...DEFAULT_ACCOUNT, ...(stored ?? {}) };
+
+    // Owner's call (2026-10-31): the account is "Prime" on a Real32 server, not the old default
+    // name on a trial server. Devices still holding those old defaults move over once.
+    if (stored && (merged.holderName === 'PhantomPip Pro' || /trial/i.test(merged.serverName))) {
+      if (merged.holderName === 'PhantomPip Pro') merged.holderName = DEFAULT_ACCOUNT.holderName;
+      if (/trial/i.test(merged.serverName)) merged.serverName = DEFAULT_ACCOUNT.serverName;
+      writeSetting(STORAGE_KEY, merged);
+    }
 
     /*
      * Issued here, once, and written down immediately.
@@ -391,75 +395,33 @@ export function mailboxSubtitle(config: AccountConfig): string {
   return pick(MAILBOX_SUBJECTS, config.accountNumber, 1)(config.brokerName);
 }
 
-/**
- * The account's own name, as MT5 writes it on a balance operation.
- *
- * MT5 files a deposit as a deal of type "balance" and shows that deal's *comment* under it. For
- * the funding of a demo account the comment the server writes is the account's name, which is
- * why the History ledger reads `D-UGMOBILE-USD-1566056226822` under the opening balance rather
- * than the word "Deposit" — the line identifies which account the money went into, on a
- * platform where one login can hold several.
- *
- * Composed from the same four things MT5 composes it from, in the same order:
- *
- *   `D`        demo, which every account here is — nothing is being traded for real money
- *   server     the trade server, minus the `-MT5` platform tag it always carries
- *   currency   the deposit currency, taken from the trading math so there is one definition
- *   number     the account number
- *
- * Returns `''` with no number set. That state lasts one frame before hydration, and a
- * half-formed identifier reads as a bug, whereas nothing at all reads as not-yet — callers fall
- * back to plain wording for it.
- */
-export function accountBody(config: AccountConfig): string {
-  const typed = config.accountLabel.trim();
-  if (typed) return typed;
-
-  const number = config.accountNumber.trim();
-  if (!number) return '';
-
-  const server = config.serverName
-    .replace(/[-_\s]*mt5$/i, '')
-    .replace(/[^A-Za-z0-9]+/g, '')
-    .toUpperCase();
-
-  return `${server || 'DEMO'}-${DEPOSIT_CURRENCY}-${number}`;
+/** 32-bit FNV-1a, seeded, for the operation's code below. */
+function fnv(text: string, seed: number): number {
+  let h = seed >>> 0;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
 }
 
 /**
- * What the leading letter says.
+ * The name a deposit or withdrawal is filed under on the History ledger, in the shape the real
+ * terminal shows (references/het.PNG: `D-trial-USD-96f61e93f49b45`):
  *
- * `D` for money in, `W` for money out — so the History ledger states, on the row itself, which
- * direction the operation went. The amount's sign and colour already say it; carrying it in the
- * identifier too is what makes a run of rows scannable as *this account has been withdrawn
- * from*, which a column of differently-coloured numbers does not.
- *
- * Worth knowing, since the format is borrowed from real terminals: MT5's own `D-` means Demo,
- * not Deposit — it marks the account type, and a withdrawal on a demo account still reads `D-`.
- * The scheme below is deliberately not that one.
+ *   `D` / `W`  money in / money out
+ *   bank       the payment system from settings (`ledgerBank`), lower case
+ *   currency   the deposit currency, upper case
+ *   code       14 lower-case hex digits, fixed per operation (hashed from its id and time)
  */
-export type LedgerDirection = 'deposit' | 'withdrawal';
-
-export function ledgerPrefix(direction: LedgerDirection): string {
-  return direction === 'deposit' ? 'D' : 'W';
-}
-
-/** The account's name as the header states it: the identity, which is the funded one. */
-export function accountName(config: AccountConfig): string {
-  const body = accountBody(config);
-  return body ? `${ledgerPrefix('deposit')}-${body}` : '';
-}
-
-/** The name a single balance operation is filed under, lettered by its direction. */
-export function balanceOpName(config: AccountConfig, amount: number): string {
-  const body = accountBody(config);
-  if (!body) return '';
-  return `${ledgerPrefix(amount < 0 ? 'withdrawal' : 'deposit')}-${body}`;
-}
-
-/** The header's value, for components. */
-export function useAccountName(): string {
-  return accountName(useAccount());
+export function balanceOpName(
+  config: AccountConfig,
+  op: { id?: string; amount: number; time: number }
+): string {
+  const bank = config.ledgerBank.replace(/[^A-Za-z0-9]+/g, '').toLowerCase() || DEFAULT_ACCOUNT.ledgerBank;
+  const key = `${op.id ?? ''}|${Math.round(op.time)}`;
+  const code = (fnv(key, 0x811c9dc5).toString(16).padStart(8, '0') + fnv(key, 0x9e3779b9).toString(16).padStart(8, '0')).slice(0, 14);
+  return `${op.amount < 0 ? 'W' : 'D'}-${bank}-${DEPOSIT_CURRENCY}-${code}`;
 }
 
 /**
@@ -552,9 +514,9 @@ export function useTradeComment(): string {
 }
 
 /** A function that names any balance operation, for components rendering a ledger. */
-export function useBalanceOpName(): (amount: number) => string {
+export function useBalanceOpName(): (op: { id?: string; amount: number; time: number }) => string {
   const config = useAccount();
-  return (amount: number) => balanceOpName(config, amount);
+  return (op) => balanceOpName(config, op);
 }
 
 /* ------------------------------------------------------------------ */

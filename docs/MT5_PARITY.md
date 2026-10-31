@@ -82,7 +82,17 @@ clock, monotonic), so candles bucket correctly.
 `components/chart/engine/MT5Chart.ts`. Measured from the recordings:
 
 - **Frame**: `#313131` hairlines — top and right of the plot, and the time-axis rule across the
-  full width. **No grid** (owner's decision; the real app draws a dashed grid).
+  full width. **Grid** on by default (owner reversed the earlier no-grid call, 2026-10-31),
+  measured 1:1 off `references/IMG_0074.PNG` (1170 px = 390 pt): dashed `#373B4C`, 3 pt on / 3 pt
+  off, one device pixel thick, under the candles. A fixed screen measure that never scales with
+  zoom: price lines every 40 pt from 13 pt below the top, a price label on each; time lines every
+  48 pt, sliding with a pan and continuing past both ends of the data, a time label on every second
+  one. Labels are whatever price/bar falls on a line, so not round numbers.
+- **Chart Settings** (`ChartSettingsModal`, a bottom sheet): opened only from **Settings → Chart →
+  Chart settings**, as a sheet over the account Settings page (owner's choice; nothing on the chart
+  opens it, and the chart menu's Settings row stays inert). Show grid, Show bid price line, colours for Background / Foreground /
+  Grid / Bull candle / Bear candle / Bid price line, Reset to defaults. Live, per device
+  (`chart.settings`, shared store `useChartSettings`); unplayed candles take the chosen colours at 20%.
 - **Price column**: as wide as its widest label (~71 pt real); labels SF 11 pt `#D4D4D4`, slight
   tracking; **even division of the visible range** (MT5's labels are not round numbers), ~40 pt apart.
 - **Time row**: 26 pt; labels `28 Oct 10:45` left-aligned after a short tick mark; ~90+ pt apart.
@@ -132,8 +142,11 @@ clock, monotonic), so candles bucket correctly.
 - **One-click bar**: no colour transition (the fade left it purple during tick bursts). 40pt tall;
   prices 10% smaller than measured (owner's call); label 8.5px; volume semibold, chevrons white.
 - **Trade tab**: selected + open loss → red icon and label (real behaviour); white when unselected.
-- **Price lines** (`open → current`, deal dates): Helvetica Neue (`.mt5-price-line`), 17px in Trade
-  and History.
+- **Price lines** (`open → current`, deal dates): Helvetica Neue (`.mt5-price-line`), 17px in Trade.
+  **History: 14px** — measured 2026-10-31 off `references/het.PNG` (real) vs `bfdgv.PNG` (ours):
+  real cap height 30px@3x on the price line, the date and the balance comment alike; ours at 17px
+  was 37px. Balance rows use the same line. Comment shape `D-trial-USD-96f61e93f49b45`: lower-case
+  payment system, `USD`, 14 lower-case hex.
 - **Settings**: header min-height counts its padding so the title centres like other screens;
   two-line rows 54pt with 19pt between baselines.
 - Open question: the real Trade header has no left (card) button.

@@ -12,6 +12,7 @@ import WindowPanel from '@/components/chart/WindowPanel';
 import ChartCorner from '@/components/chart/parts/ChartCorner';
 import ChartInfoOverlay from '@/components/chart/parts/ChartInfoOverlay';
 import QuickTradeBar from '@/components/chart/parts/QuickTradeBar';
+import { useChartSettings } from '@/components/chart/useChartSettings';
 import {
   ChartBlocked,
   ChartToast,
@@ -110,6 +111,7 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
    */
   const autoTrader = useAutoTrader(symbol);
   const [ticketOpen, setTicketOpen] = useState(false);
+  const chartSettings = useChartSettings();
 
   /**
    * Aiming an order level at the chart. `picking` is the crosshair currently open; `picked` is
@@ -243,6 +245,7 @@ export default function ChartView({ symbol = DEFAULT_CHART_SYMBOL }: { symbol?: 
     ghostAfter,
     bid: lastBid,
     marks,
+    settings: chartSettings,
   });
   const { containerRef, coords, corner, revision: coordRevision, panBars } = chart;
 

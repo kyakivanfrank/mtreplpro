@@ -1,15 +1,7 @@
 import React from 'react';
 import Section from '@/components/settings/fields/Section';
 import Field from '@/components/settings/fields/Field';
-import { accountBody, MAX_TRADE_COMMENT, type AccountConfig } from '@/lib/account';
-
-/**
- * The identifier the Ledger footer explains itself with.
- *
- * A literal rather than the live value: the footer's job is to show what the *letters* do, and
- * threading the user's own name through a sentence that prints it three times buries the rule.
- */
-const LEDGER_EXAMPLE = 'EXNESSMT5TRIAL9-USD-32914776';
+import { DEFAULT_ACCOUNT, MAX_TRADE_COMMENT, type AccountConfig } from '@/lib/account';
 
 type Set = <K extends keyof AccountConfig>(key: K, value: AccountConfig[K]) => void;
 
@@ -29,21 +21,18 @@ export function BrokerSection({ draft, set }: { draft: AccountConfig; set: Set }
 /**
  * Its own section rather than a sixth row under Broker, because it is the only field here whose
  * effect is somewhere else — a footer explaining that would read as a note about all five.
- *
- * Placeholdered, never pre-filled: writing the composed value into the box would freeze it, and
- * the field would stop following the Account and Server above it.
  */
 export function LedgerSection({ draft, set }: { draft: AccountConfig; set: Set }) {
   return (
     <Section
       title="Ledger"
-      footer={`Names every deposit and withdrawal on the History screen, and heads the balance summary at the foot of it. Each row is lettered by direction — D for money paid in, W for money taken out — so ${LEDGER_EXAMPLE} appears there as D-${LEDGER_EXAMPLE} on a deposit and W-${LEDGER_EXAMPLE} on a withdrawal. Leave it empty and it is composed from the server, the deposit currency and the account number above.`}
+      footer="The payment system named on every deposit and withdrawal on the History screen. A deposit reads D-ngbank-USD-96f61e93f49b45 and a withdrawal W-ngbank-USD-e22e78730d9d45; the code at the end is different on every row."
     >
       <Field
-        label="Name"
-        value={draft.accountLabel}
-        onChange={(v) => set('accountLabel', v)}
-        placeholder={accountBody({ ...draft, accountLabel: '' })}
+        label="Bank"
+        value={draft.ledgerBank}
+        onChange={(v) => set('ledgerBank', v.toLowerCase())}
+        placeholder={DEFAULT_ACCOUNT.ledgerBank}
         last
       />
     </Section>

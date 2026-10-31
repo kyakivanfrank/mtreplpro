@@ -13,7 +13,7 @@
   by the seeder in `MT5 replica Seeder/`) and runs a local order engine. Architecture, data flow and
   commands: `README.md`. Known bugs, fixes and open issues: `docs/CODE_AUDIT.md`.
 - **Owner decisions (do not undo):** keep the look-ahead autotrader, realistic ticket/account
-  numbers, Exness *trial* naming, the single shared login, and no "simulated" labelling. Fix bugs and
+  numbers, the account named "Prime" on server `Exness-MT5Real32` (was Exness *trial* naming, changed by the owner 2026-10-31), ledger rows named `D-`/`W-ngbank-USD-<14 hex>` (real shape, references/het.PNG), the single shared login, and no "simulated" labelling. Fix bugs and
   remove redundancy; do not re-architect features.
 - **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD at 60,000 M1 candles each, as set
   in the seeder's `config.json`. The app follows whatever `/api/mt5/meta` reports.

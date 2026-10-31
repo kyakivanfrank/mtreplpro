@@ -2,8 +2,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Candle, TimeframeKey } from '@/lib/market/types';
 import { TIMEFRAMES as TF_SECONDS } from '@/lib/market/timeframes';
 import type { ChartCoords } from '@/components/chart/chartCoords';
-import { MT5Chart, type PriceMark } from '@/components/chart/engine/MT5Chart';
-import { BAR_DOWN, BAR_UP, GHOST_DOWN, GHOST_UP, type OHLCInfo } from '@/components/chart/chartConfig';
+import { MT5Chart, type ChartAppearance, type PriceMark } from '@/components/chart/engine/MT5Chart';
+import { ghostOf, type ChartSettings, type OHLCInfo } from '@/components/chart/chartConfig';
+
+function appearanceOf(settings: ChartSettings): ChartAppearance {
+  const c = settings.colors;
+  return {
+    colors: {
+      up: c.bull,
+      down: c.bear,
+      ghostUp: ghostOf(c.bull),
+      ghostDown: ghostOf(c.bear),
+      bid: c.bid,
+      background: c.background,
+      foreground: c.foreground,
+      grid: c.grid,
+    },
+    grid: settings.grid,
+    bidLine: settings.bidLine,
+  };
+}
 
 /**
  * Mounts the canvas chart, feeds it, and hands back what the screen and its overlays need.
@@ -19,6 +37,7 @@ export function useChartInstance({
   ghostAfter,
   bid,
   marks,
+  settings,
 }: {
   digits: number;
   candles: Candle[];
@@ -27,6 +46,7 @@ export function useChartInstance({
   ghostAfter: number;
   bid: number | null;
   marks: PriceMark[];
+  settings: ChartSettings;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<MT5Chart | null>(null);
@@ -42,16 +62,15 @@ export function useChartInstance({
   // Read inside the mount effect, which must not re-run when they change.
   const digitsRef = useRef(digits);
   digitsRef.current = digits;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const engine = new MT5Chart(
-      container,
-      { up: BAR_UP, down: BAR_DOWN, ghostUp: GHOST_UP, ghostDown: GHOST_DOWN, bid: BAR_UP },
-      digitsRef.current
-    );
+    const engine = new MT5Chart(container, appearanceOf(settingsRef.current).colors, digitsRef.current);
+    engine.setAppearance(appearanceOf(settingsRef.current));
     engineRef.current = engine;
 
     engine.onViewportChange = () => {
@@ -78,6 +97,10 @@ export function useChartInstance({
   useEffect(() => {
     engineRef.current?.setDigits(digits);
   }, [digits]);
+
+  useEffect(() => {
+    engineRef.current?.setAppearance(appearanceOf(settings));
+  }, [settings]);
 
   useEffect(() => {
     engineRef.current?.setData(candles, `${symbol}|${timeframe}`, ghostAfter, TF_SECONDS[timeframe].seconds);

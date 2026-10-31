@@ -31,6 +31,16 @@ export interface ChartColors {
   ghostUp: string;
   ghostDown: string;
   bid: string;
+  background: string;
+  /** Axis labels. */
+  foreground: string;
+  grid: string;
+}
+
+export interface ChartAppearance {
+  colors: ChartColors;
+  grid: boolean;
+  bidLine: boolean;
 }
 
 export interface CrosshairInfo {
@@ -77,10 +87,18 @@ const LABEL_TRACKING = '0.35px';
 const AXIS_PAD_LEFT = 8;
 const AXIS_PAD_RIGHT = 10;
 const TIME_AXIS_HEIGHT = 26;
-/** Target gap between price labels. MT5 divides the range evenly rather than rounding. */
-const PRICE_LABEL_GAP = 40;
-/** Minimum gap between time labels. */
-const TIME_LABEL_GAP = 92;
+/*
+ * The grid, measured off the real terminal (references/IMG_0074.PNG, 1170 px = 390 pt). It is
+ * a fixed screen measure, not a price or time measure: zooming never stretches it.
+ *   price lines  every 40 pt, the first 13 pt under the plot's top edge; a price label on each
+ *   time lines   every 48 pt, sliding with the candles; a time label on every second one
+ *   dashes       3 pt on, 3 pt off, one device pixel thick, #373B4C
+ * Labels are whatever price or bar falls on a line, so they are not round numbers, as on MT5.
+ */
+const PRICE_GRID_GAP = 40;
+const PRICE_GRID_FIRST = 13;
+const TIME_GRID_GAP = 48;
+const GRID_DASH = [3, 3];
 const BOX_HEIGHT = 14;
 /** Space after the newest bar, as a share of the plot, when following the end. */
 const RIGHT_SHIFT = 0.06;
@@ -103,7 +121,6 @@ const SCALE_EDGE = 0.03;
 const SCALE_SLACK = 1.3;
 
 const FRAME = '#313131';
-const AXIS_TEXT = '#d4d4d4';
 const CROSS = 'rgba(255, 255, 255, 0.85)';
 
 const MIN_SPACING = 1;
@@ -127,8 +144,6 @@ const SLOP = 6;
 const DOUBLE_TAP_MS = 320;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** Bar counts a time label may step by — whole hours, days and so on at every timeframe. */
-const LABEL_STEPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 4096];
 
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -157,6 +172,8 @@ export class MT5Chart {
   private digits = 5;
   private secondsPerBar = 60;
   private colors: ChartColors;
+  private showGrid = true;
+  private showBid = true;
 
   private spacing = 6;
   /** Fractional bar index at the plot's right edge. */
@@ -279,6 +296,13 @@ export class MT5Chart {
       if (bars.length > 0) this.resetView();
     }
 
+    this.invalidate();
+  }
+
+  setAppearance({ colors, grid, bidLine }: ChartAppearance): void {
+    this.colors = colors;
+    this.showGrid = grid;
+    this.showBid = bidLine;
     this.invalidate();
   }
 
@@ -587,8 +611,10 @@ export class MT5Chart {
     const ph = this.plotHeight();
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = this.colors.background;
     ctx.fillRect(0, 0, W, H);
+
+    if (this.showGrid) this.drawGrid(ctx, pw, ph);
 
     /* ---- candles ---- */
     ctx.save();
@@ -676,18 +702,57 @@ export class MT5Chart {
     return price.toFixed(this.digits);
   }
 
+  /** The price lines: fixed screen heights, each labelled with the price it crosses. */
+  private priceLevels(ph: number): { price: number; y: number }[] {
+    const levels: { price: number; y: number }[] = [];
+    for (let y = PRICE_GRID_FIRST; y <= ph - FONT_SIZE / 2; y += PRICE_GRID_GAP) {
+      levels.push({ price: this.yToPrice(y), y });
+    }
+    return levels;
+  }
+
+  /**
+   * The time lines across the whole plot, past either end of the data too, so the grid never
+   * runs out. `bar` is the bar under a labelled line, or null where there is no bar or no label.
+   */
+  private timeLines(pw: number): { x: number; bar: Candle | null }[] {
+    // x of bar 0; lines sit on whole multiples of the gap from it, so they travel with a pan.
+    const base = pw - this.rightIndex * this.spacing;
+    const lines: { x: number; bar: Candle | null }[] = [];
+    for (let n = Math.ceil(-base / TIME_GRID_GAP); base + n * TIME_GRID_GAP <= pw; n += 1) {
+      const x = base + n * TIME_GRID_GAP;
+      const index = Math.round((n * TIME_GRID_GAP) / this.spacing);
+      const labelled = n % 2 === 0 && index >= 0 && index < this.bars.length;
+      lines.push({ x, bar: labelled ? this.bars[index] : null });
+    }
+    return lines;
+  }
+
+  private drawGrid(ctx: CanvasRenderingContext2D, pw: number, ph: number): void {
+    const px = 1 / this.dpr;
+    const snap = (v: number) => Math.round(v * this.dpr) / this.dpr + px / 2;
+    ctx.save();
+    ctx.strokeStyle = this.colors.grid;
+    ctx.lineWidth = px;
+    ctx.setLineDash(GRID_DASH);
+    ctx.beginPath();
+    for (const { y } of this.priceLevels(ph)) {
+      ctx.moveTo(0, snap(y));
+      ctx.lineTo(pw, snap(y));
+    }
+    for (const { x } of this.timeLines(pw)) {
+      ctx.moveTo(snap(x), 0);
+      ctx.lineTo(snap(x), ph);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawPriceAxis(ctx: CanvasRenderingContext2D, pw: number, ph: number): void {
     this.setTextStyle(ctx);
-    ctx.fillStyle = AXIS_TEXT;
+    ctx.fillStyle = this.colors.foreground;
     ctx.textAlign = 'left';
-
-    // Even division of the visible range — MT5's labels are not round numbers.
-    const count = Math.max(2, Math.round(ph / PRICE_LABEL_GAP));
-    const step = (this.scaleTop - this.scaleBottom) / count;
-    for (let k = 0; k < count; k += 1) {
-      const price = this.scaleTop - step * (k + 0.25);
-      const y = this.priceToY(price);
-      if (y < FONT_SIZE / 2 || y > ph - FONT_SIZE / 2) continue;
+    for (const { price, y } of this.priceLevels(ph)) {
       ctx.fillText(this.formatPrice(price), pw + AXIS_PAD_LEFT, y);
     }
   }
@@ -695,24 +760,20 @@ export class MT5Chart {
   private drawTimeAxis(ctx: CanvasRenderingContext2D, pw: number, ph: number, snap: (v: number) => number): void {
     if (this.bars.length === 0) return;
     this.setTextStyle(ctx);
-    ctx.fillStyle = AXIS_TEXT;
+    ctx.fillStyle = this.colors.foreground;
     ctx.textAlign = 'left';
 
     const daily = this.secondsPerBar >= 86400;
-    const every = LABEL_STEPS.find((n) => n * this.spacing >= TIME_LABEL_GAP) ?? LABEL_STEPS[LABEL_STEPS.length - 1];
-    const first = Math.max(0, Math.floor(this.xToIndex(0) / every) * every);
-    const last = Math.min(this.bars.length - 1, Math.ceil(this.xToIndex(this.width)));
     const y = ph + TIME_AXIS_HEIGHT / 2 + 0.5;
 
     ctx.strokeStyle = FRAME;
     ctx.lineWidth = 1 / this.dpr;
     ctx.beginPath();
-    for (let i = first; i <= last; i += every) {
-      const x = this.indexToX(i);
-      if (x < 0) continue;
+    for (const { x, bar } of this.timeLines(pw)) {
+      if (!bar) continue;
       ctx.moveTo(snap(x), ph);
       ctx.lineTo(snap(x), ph + 4);
-      ctx.fillText(timeLabel(this.bars[i].time, daily), x + 4, y);
+      ctx.fillText(timeLabel(bar.time, daily), x + 4, y);
     }
     ctx.stroke();
   }
@@ -724,7 +785,7 @@ export class MT5Chart {
       ctx.fillStyle = fill;
       ctx.fillRect(x, top, w, BOX_HEIGHT);
     } else {
-      ctx.fillStyle = '#000';
+      ctx.fillStyle = this.colors.background;
       ctx.fillRect(x, top, w, BOX_HEIGHT);
     }
     if (stroke) {
@@ -745,7 +806,7 @@ export class MT5Chart {
       this.drawBox(ctx, pw + 1, y, this.formatPrice(mark.price), mark.style === 'fill' ? mark.color : null, mark.style === 'outline' ? mark.color : null, mark.style === 'fill' ? '#000' : mark.color);
     }
 
-    if (this.bid === null) return;
+    if (this.bid === null || !this.showBid) return;
     const y = this.priceToY(this.bid);
     if (y < 0 || y > ph) return;
 

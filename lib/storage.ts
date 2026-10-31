@@ -44,6 +44,8 @@ export const STORAGE_KEYS = {
   watchlist: 'watchlist',
   chartSymbol: 'chart.symbol',
   chartTimeframe: 'chart.timeframe',
+  /** Grid, bid line and colours from the chart's Settings page. A device preference. */
+  chartSettings: 'chart.settings',
   /** Superseded by `books`; still read once to migrate an existing device. */
   positions: 'positions',
   balance: 'account.balance',

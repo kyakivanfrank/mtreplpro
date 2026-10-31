@@ -21,8 +21,46 @@ export const BAR_DOWN = '#EE534E';
  */
 const GHOST_OPACITY = 0.2;
 
-export const GHOST_UP = `rgba(37, 166, 155, ${GHOST_OPACITY})`;
-export const GHOST_DOWN = `rgba(238, 83, 78, ${GHOST_OPACITY})`;
+/** The same colour at the ghost opacity, for whatever candle colours the user has picked. */
+export function ghostOf(hex: string): string {
+  const n = Number.parseInt(hex.replace('#', ''), 16);
+  if (!Number.isFinite(n)) return hex;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${GHOST_OPACITY})`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Chart settings (the chart menu's Settings page)                    */
+/* ------------------------------------------------------------------ */
+/** Colours are 6-digit hex so they round-trip through the native colour picker. */
+export interface ChartSettings {
+  grid: boolean;
+  bidLine: boolean;
+  colors: {
+    background: string;
+    foreground: string;
+    grid: string;
+    bull: string;
+    bear: string;
+    bid: string;
+  };
+}
+
+/**
+ * Grid on, as on the real terminal: dashed `#373B4C`, measured off references/IMG_0074.PNG (the
+ * geometry is in the engine). The owner first had it off (docs/MT5_PARITY.md), then asked for it.
+ */
+export const DEFAULT_CHART_SETTINGS: ChartSettings = {
+  grid: true,
+  bidLine: true,
+  colors: {
+    background: '#000000',
+    foreground: '#d4d4d4',
+    grid: '#373b4c',
+    bull: BAR_UP.toLowerCase(),
+    bear: BAR_DOWN.toLowerCase(),
+    bid: BAR_UP.toLowerCase(),
+  },
+};
 
 /* ------------------------------------------------------------------ */
 /*  Timeframes and defaults                                            */

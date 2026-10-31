@@ -1,8 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Portal from '@/components/ui/Portal';
 import AccountTypeSection from '@/components/settings/sections/AccountTypeSection';
+import ChartSettingsModal from '@/components/chart/ChartSettingsModal';
+import ChartSection from '@/components/settings/sections/ChartSection';
 import AutoTradingSection from '@/components/settings/sections/AutoTradingSection';
 import FundsSection from '@/components/settings/sections/FundsSection';
 import {
@@ -33,6 +35,7 @@ interface AccountSettingsModalProps {
  */
 export default function AccountSettingsModal({ open, config, onClose }: AccountSettingsModalProps) {
   const d = useAccountDraft(open, config, onClose);
+  const [chartOpen, setChartOpen] = useState(false);
 
   const publishedCandles = archiveCandles();
   const publishedDays = archiveDays();
@@ -65,6 +68,7 @@ export default function AccountSettingsModal({ open, config, onClose }: AccountS
           <LedgerSection draft={d.draft} set={d.set} />
           <TradeCommentSection draft={d.draft} set={d.set} />
           <AutoTradingSection draft={d.draft} set={d.set} />
+          <ChartSection onOpen={() => setChartOpen(true)} />
 
           <FundsSection
             summary={d.summary}
@@ -122,6 +126,9 @@ export default function AccountSettingsModal({ open, config, onClose }: AccountS
           <div className="h-[calc(2.5rem+var(--safe-bottom))] w-full pointer-events-none" />
         </div>
       </div>
+
+      {/* A sheet on top of this page: chart changes save as they are made, apart from Save above. */}
+      <ChartSettingsModal open={chartOpen} onClose={() => setChartOpen(false)} />
     </Portal>
   );
 }
