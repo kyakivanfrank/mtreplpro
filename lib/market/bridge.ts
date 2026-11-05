@@ -85,6 +85,17 @@ const RETRY_MAX_MS = 60_000;
 export type BridgeStatus = 'connecting' | 'live' | 'offline';
 
 /**
+ * Which of the two paths is bringing candles in right now. Shown in Settings and nowhere else:
+ * the switch is automatic and nothing else in the app needs to know about it.
+ *
+ *   live        the seeder's WebSocket: each candle as its minute closes
+ *   database    Upstash, refreshed every fifteen minutes
+ *   connecting  neither has answered yet
+ *   offline     neither is reachable; the device trades the candles it already holds
+ */
+export type FeedSource = 'live' | 'database' | 'connecting' | 'offline';
+
+/**
  * Where a symbol is in its fill.
  *
  * `empty` is the one that matters for diagnosis: the store answered, and the answer was that
@@ -114,6 +125,8 @@ export interface BridgeOptions {
   onDownloadState?: (symbol: string, state: DownloadState) => void;
   onError?: (message: string) => void;
   onStatus?: (status: BridgeStatus) => void;
+  /** Fires when the path candles arrive by changes (see `FeedSource`). */
+  onSource?: (source: FeedSource) => void;
   /** Fires with the published instrument list, so the app can offer exactly those. */
   onCatalogue?: (symbols: string[]) => void;
 }
@@ -125,6 +138,7 @@ export class BridgeDownloader {
   private symbols: string[] = [];
   private running = false;
   private status: BridgeStatus = 'offline';
+  private source: FeedSource = 'offline';
 
   /** True while the worker is mid-pass. Everything funnels through one pass at a time. */
   private working = false;
@@ -167,6 +181,7 @@ export class BridgeDownloader {
         this.options.onCatalogue?.([...this.published]);
       },
       onLink: (open) => {
+        this.updateSource();
         if (open) {
           // Also clears any database error the store is showing (see its onStatus).
           this.setStatus('live');
@@ -247,6 +262,10 @@ export class BridgeDownloader {
 
   getStatus(): BridgeStatus {
     return this.status;
+  }
+
+  getSource(): FeedSource {
+    return this.source;
   }
 
   /** Everything the publisher offers. Empty until the catalogue has landed. */
@@ -495,9 +514,22 @@ export class BridgeDownloader {
   /* ---------- status ---------- */
 
   private setStatus(status: BridgeStatus): void {
-    if (this.status === status) return;
-    this.status = status;
-    this.options.onStatus?.(status);
+    if (this.status !== status) {
+      this.status = status;
+      this.options.onStatus?.(status);
+    }
+    this.updateSource();
+  }
+
+  private updateSource(): void {
+    const source: FeedSource = this.live.isOpen()
+      ? 'live'
+      : this.status === 'live'
+        ? 'database'
+        : this.status;
+    if (source === this.source) return;
+    this.source = source;
+    this.options.onSource?.(source);
   }
 
   /** A regained network or a foregrounded tab should not wait out the remaining backoff. */

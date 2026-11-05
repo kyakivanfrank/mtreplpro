@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { findInstrument } from '@/lib/instruments';
 import { CandleSeries } from './candles';
-import { BridgeDownloader, type BridgeStatus, type DownloadState } from './bridge';
+import {
+  BridgeDownloader,
+  type BridgeStatus,
+  type DownloadState,
+  type FeedSource,
+} from './bridge';
 import { PlaybackSession, type PlaybackState } from './session';
 import { archiveRange, barAt, loadArchive, primeArchives, seriesAt, wipeAllArchives } from './archive';
 import { primeMetaCache, recordView } from './meta';
@@ -163,6 +168,7 @@ class MarketStore {
    */
   private published: string[] = [];
   private status: BridgeStatus = 'offline';
+  private source: FeedSource = 'offline';
   private bridgeError: string | null = null;
 
   /**
@@ -203,6 +209,9 @@ class MarketStore {
   getDownload = (symbol: string): DownloadState => this.downloads.get(symbol) ?? 'missing';
 
   getBridgeStatus = (): BridgeStatus => this.status;
+
+  /** Where new candles are coming from right now: the live feed or the database. */
+  getFeedSource = (): FeedSource => this.source;
 
   /** Everything the terminal publishes. Empty until the catalogue lands. */
   getPublished = (): string[] => this.published;
@@ -331,6 +340,10 @@ class MarketStore {
       },
       onCatalogue: (symbols) => {
         this.published = symbols;
+        this.notify();
+      },
+      onSource: (source) => {
+        this.source = source;
         this.notify();
       },
       onStatus: (status) => {
@@ -832,6 +845,15 @@ export function usePublished(): string[] {
     marketStore.subscribe,
     marketStore.getPublished,
     () => NO_SYMBOLS
+  );
+}
+
+/** Live feed or database: which path is delivering candles. For the Settings data section. */
+export function useFeedSource(): FeedSource {
+  return useSyncExternalStore(
+    marketStore.subscribe,
+    marketStore.getFeedSource,
+    () => 'offline' as FeedSource
   );
 }
 
