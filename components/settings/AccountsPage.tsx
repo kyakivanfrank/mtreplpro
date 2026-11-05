@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import Portal from '@/components/ui/Portal';
 import ViewLayout from '@/components/ui/ViewLayout';
 import PlusIcon from '@/components/icons/Plus';
-import { DemoPill } from '@/components/settings/parts/DemoMarks';
 import { useAccount } from '@/lib/account';
 import { groupedMoney } from '@/lib/money';
 import { DEPOSIT_CURRENCY } from '@/lib/trading/math';
@@ -87,7 +86,7 @@ export default function AccountsPage({ open, onClose }: { open: boolean; onClose
             <div className="relative flex items-center bg-surface h-[85px] pl-4 pr-4">
               <BrokerTile brokerName={account.brokerName} />
               <div className="flex-1 min-w-0 ml-[17px]">
-                <div className="text-accent text-[19px] font-semibold leading-[24px] truncate pr-16">
+                <div className="text-accent text-[19px] font-semibold leading-[24px] truncate">
                   {account.holderName}
                 </div>
                 <div className="text-white text-[15px] leading-[20px] truncate">
@@ -96,9 +95,6 @@ export default function AccountsPage({ open, onClose }: { open: boolean; onClose
                 <div className="text-white text-[15px] leading-[20px] truncate">
                   {groupedMoney(book.balance)} {DEPOSIT_CURRENCY}, Hedge
                 </div>
-              </div>
-              <div className="absolute top-[12px] right-4">
-                <DemoPill />
               </div>
               <svg
                 width="8"

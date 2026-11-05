@@ -1,9 +1,8 @@
 import React from 'react';
 import type { AccountConfig } from '@/lib/account';
-import { DemoRibbon } from '@/components/settings/parts/DemoMarks';
 
 /**
- * The account identity block at the top of the first card, with the Demo ribbon in its corner.
+ * The account identity block at the top of the first card.
  * Tapping it opens the account list, as on the terminal.
  */
 export default function AccountCard({
@@ -19,7 +18,6 @@ export default function AccountCard({
       onClick={onOpen}
       className="relative w-full flex items-center pt-3 pb-[9px] border-b border-hairline active:bg-white/5"
     >
-      <DemoRibbon />
       <div className="flex-1 flex flex-col items-center text-center text-white">
         <span className="text-[18px] leading-[22px]">{account.holderName}</span>
         <span className="text-[15px] leading-[20px] mt-[1px]">{account.brokerName}</span>

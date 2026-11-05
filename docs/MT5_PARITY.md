@@ -117,9 +117,9 @@ clock, monotonic), so candles bucket correctly.
 - **One-click bar**: at the top of the chart, under the toolbar (owner's choice; the real app docks it at the bottom), 40 pt, both buttons coloured by the last tick.
 - **Quotes**: round list button left, edit + search pill right, no search bar, blue corner marker on
   the selected row.
-- **Settings**: Demo corner ribbon, MT5's measured tile colours, the fake chat badge and blue round
-  button removed. Tapping the account card opens the new **Accounts** page (broker tile, blue name,
-  Demo pill, `balance USD, Hedge`).
+- **Settings**: MT5's measured tile colours, the fake chat badge and blue round button removed.
+  Tapping the account card opens the new **Accounts** page (broker tile, blue name,
+  `balance USD, Hedge`). No Demo ribbon or Demo pill (owner's call, 2026-11-05).
 - **History**: segmented control at 17 pt with a white selected label (only the pill marks it).
 
 ## 7. Not done / needs reference material
