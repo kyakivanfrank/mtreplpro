@@ -1,6 +1,7 @@
 'use client';
 
-import { recordSpec, type InstrumentSpec } from './meta';
+import { LiveFeed, specFromWire, type WireInstrument } from './live';
+import { recordSpec } from './meta';
 import {
   applyCsv,
   heldDays,
@@ -45,12 +46,22 @@ import {
  * was off for a week, one whose storage was evicted mid-write, one that got a truncated
  * response, all simply hold day counts that no longer match, and the next pass fetches
  * exactly the days that are wrong.
+ *
+ * ── Second of two sources ────────────────────────────────────────────
+ *
+ * The seeder also serves every closed minute over a WebSocket (`live.ts`), and that is tried
+ * first. This downloader owns it: it hands it the address the catalogue advertises, gives it a
+ * few seconds to answer before the first pass, and leaves alone any symbol it is filling. The
+ * day diff above is what keeps the two from fighting: the live feed only ever leaves this
+ * device holding *more* of a day than the manifest, which is never a reason to download, so
+ * while the feed is up these passes request nothing but the catalogue. When it drops, the very
+ * next pass fills whatever is short, and nothing is shown to the user either way.
  */
 
 const API = '/api/mt5';
 
-/** How often the archives are brought forward. Matches the publisher's own cycle. */
-const REFRESH_MS = 30 * 60 * 1000;
+/** How often the archives are brought forward. Matches the publisher's own fifteen-minute cycle. */
+const REFRESH_MS = 15 * 60 * 1000;
 
 /**
  * Retry gap while the publisher is still backfilling.
@@ -82,20 +93,6 @@ export type BridgeStatus = 'connecting' | 'live' | 'offline';
  */
 export type DownloadState = 'missing' | 'downloading' | 'ready' | 'empty';
 
-interface WireInstrument {
-  symbol: string;
-  broker: string;
-  description: string;
-  group: string;
-  digits: number;
-  point: number;
-  contract_size: number;
-  spread: number;
-  volume_min: number;
-  volume_max: number;
-  volume_step: number;
-}
-
 /** `{symbol: {"2026-08-22": candleCount}}` — what the publisher holds, day by day. */
 type Manifest = Record<string, Record<string, number>>;
 
@@ -106,6 +103,8 @@ interface MetaReply {
   days: number;
   updated: number;
   manifest: Manifest;
+  /** Where the seeder's live feed is listening, or null when none is running. */
+  live?: { url?: string } | null;
 }
 
 export interface BridgeOptions {
@@ -152,8 +151,33 @@ export class BridgeDownloader {
 
   private options: BridgeOptions;
 
+  /** The seeder's live feed. Tried first; this downloader is the fallback around it. */
+  private live: LiveFeed;
+
   constructor(options: BridgeOptions = {}) {
     this.options = options;
+    this.live = new LiveFeed({
+      onArchiveChanged: (symbol) => this.options.onArchiveChanged?.(symbol),
+      onDownloadState: (symbol, state) => this.options.onDownloadState?.(symbol, state),
+      onCatalogue: (symbols, digits) => {
+        for (const symbol of symbols) {
+          this.published.add(symbol);
+          this.digits.set(symbol, digits.get(symbol)!);
+        }
+        this.options.onCatalogue?.([...this.published]);
+      },
+      onLink: (open) => {
+        if (open) {
+          // Also clears any database error the store is showing (see its onStatus).
+          this.setStatus('live');
+        } else {
+          // Lost: top up from the database straight away rather than at the next interval.
+          this.refreshAll();
+        }
+      },
+      // Level with the seeder: one pass confirms nothing the database holds is missing here.
+      onIdle: () => this.refreshAll(),
+    });
   }
 
   /* ---------- lifecycle ---------- */
@@ -169,11 +193,14 @@ export class BridgeDownloader {
 
     this.refreshTimer = setInterval(() => void this.work(), REFRESH_MS);
     this.setStatus('connecting');
+    this.live.setSymbols(this.symbols);
+    this.live.start();
     void this.work();
   }
 
   stop(): void {
     this.running = false;
+    this.live.stop();
 
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer);
@@ -201,6 +228,7 @@ export class BridgeDownloader {
    */
   setSymbols(symbols: string[]): void {
     this.symbols = [...new Set(symbols)];
+    this.live.setSymbols(this.symbols);
     void this.work();
   }
 
@@ -213,6 +241,7 @@ export class BridgeDownloader {
   setPriority(symbol: string | null): void {
     if (!symbol || this.priority === symbol) return;
     this.priority = symbol;
+    this.live.setPriority(symbol);
     void this.work();
   }
 
@@ -262,19 +291,28 @@ export class BridgeDownloader {
       // about every one of them. It is cached at the edge, so asking often costs nothing.
       await this.fetchCatalogue();
 
+      // The live feed goes first. A few seconds at most: if it answers, it fills the symbols it
+      // serves and this pass skips them; if not, this pass fills everything as it always did.
+      await this.live.settled();
+
       for (const symbol of this.ordered()) {
         if (!this.running) break;
+        if (this.live.isFilling(symbol)) continue;
         await this.syncSymbol(symbol);
       }
 
       this.retry = RETRY_MIN_MS;
       this.schedulePending();
     } catch (err) {
-      // Nothing is lost and nothing blocks: the app keeps trading the archive it holds.
-      this.setStatus('offline');
-      this.options.onError?.(
-        err instanceof Error ? err.message : 'The market data store is unreachable.'
-      );
+      // Nothing is lost and nothing blocks: the app keeps trading the archive it holds. While
+      // the live feed is carrying candles the database being down changes nothing, so it is
+      // not reported at all.
+      if (!this.live.isOpen()) {
+        this.setStatus('offline');
+        this.options.onError?.(
+          err instanceof Error ? err.message : 'The market data store is unreachable.'
+        );
+      }
       this.scheduleRetry();
     } finally {
       this.working = false;
@@ -341,6 +379,7 @@ export class BridgeDownloader {
     // before any candles are stored, so the very first trim already uses the right number.
     setPublishedCandles(meta.candles);
     this.manifest = meta.manifest ?? {};
+    this.live.setEndpoint(meta.live?.url ?? null);
 
     await Promise.all(
       meta.symbols.map(async (item) => {
@@ -348,19 +387,7 @@ export class BridgeDownloader {
         this.digits.set(item.symbol, item.digits);
         this.published.add(item.symbol);
 
-        const spec: InstrumentSpec = {
-          broker: item.broker,
-          description: item.description,
-          group: item.group,
-          digits: item.digits,
-          point: item.point,
-          contractSize: item.contract_size,
-          spread: item.spread,
-          volumeMin: item.volume_min,
-          volumeMax: item.volume_max,
-          volumeStep: item.volume_step,
-        };
-        await recordSpec(item.symbol, spec);
+        await recordSpec(item.symbol, specFromWire(item as WireInstrument));
       })
     );
 

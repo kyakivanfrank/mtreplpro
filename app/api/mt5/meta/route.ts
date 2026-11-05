@@ -24,11 +24,17 @@ import { redisMGet } from '@/lib/redis';
  *              actually moved, so a closed market costs it nothing at all rather than
  *              re-downloading two identical days every half hour.
  *
- * Both keys are fetched in a single MGET, so this is one Redis command, not two.
+ *   live       `{url}` of the seeder's live WebSocket feed, or null when none is running. The
+ *              seeder advertises it in `mt5:live` with a short expiry; `MT5_LIVE_URL` in this
+ *              app's environment overrides it with a fixed address. The device tries it first
+ *              and falls back to the database on its own.
+ *
+ * All keys are fetched in a single MGET, so this is one Redis command.
  */
 
 export const MARKET_META_KEY = 'mt5:meta';
 export const MARKET_MANIFEST_KEY = 'mt5:manifest';
+export const MARKET_LIVE_KEY = 'mt5:live';
 
 interface PublishedMeta {
   symbols: unknown[];
@@ -38,10 +44,21 @@ interface PublishedMeta {
 
 type Manifest = Record<string, Record<string, number>>;
 
+interface LiveAdvert {
+  url?: string;
+}
+
+/** The fixed address from the environment, else whatever the seeder last advertised. */
+function liveEndpoint(advert: LiveAdvert | null | undefined): { url: string } | null {
+  const fixed = process.env.MT5_LIVE_URL?.trim();
+  if (fixed) return { url: fixed };
+  return typeof advert?.url === 'string' && advert.url ? { url: advert.url } : null;
+}
+
 export async function GET() {
   try {
-    const [meta, manifest] = await redisMGet<PublishedMeta | Manifest>(
-      [MARKET_META_KEY, MARKET_MANIFEST_KEY],
+    const [meta, manifest, live] = await redisMGet<PublishedMeta | Manifest | LiveAdvert>(
+      [MARKET_META_KEY, MARKET_MANIFEST_KEY, MARKET_LIVE_KEY],
       'market'
     );
 
@@ -49,13 +66,23 @@ export async function GET() {
       // The database is reachable but empty: the VPS has not published yet. Distinct from a
       // failure, and the app says so differently — this one resolves on its own.
       return NextResponse.json(
-        { error: 'No market data has been published yet.', symbols: [], days: 0, manifest: {} },
+        {
+          error: 'No market data has been published yet.',
+          symbols: [],
+          days: 0,
+          manifest: {},
+          live: liveEndpoint(live as LiveAdvert),
+        },
         { status: 503, headers: { 'Cache-Control': 'no-store' } }
       );
     }
 
     return NextResponse.json(
-      { ...(meta as PublishedMeta), manifest: (manifest as Manifest) ?? {} },
+      {
+        ...(meta as PublishedMeta),
+        manifest: (manifest as Manifest) ?? {},
+        live: liveEndpoint(live as LiveAdvert),
+      },
       {
         headers: {
           /*
@@ -76,6 +103,7 @@ export async function GET() {
         symbols: [],
         days: 0,
         manifest: {},
+        live: liveEndpoint(null),
       },
       { status: 503, headers: { 'Cache-Control': 'no-store' } }
     );

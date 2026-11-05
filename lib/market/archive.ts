@@ -280,33 +280,37 @@ export function nextBarTime(symbol: string, seconds: number): number {
  * fall off the back the moment the total exceeds the published depth, so the archive is a
  * fixed-length queue that mirrors the publisher's own rather than growing forever.
  */
-export async function applyCsv(
+export function applyCsv(
   symbol: string,
   digits: number,
   text: string
 ): Promise<M1Archive | undefined> {
-  if (typeof text !== 'string' || text.length === 0) return memory.get(symbol);
+  const previous = writing.get(symbol) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(() => mergeCsv(symbol, digits, text));
+  writing.set(symbol, next);
+  next
+    .finally(() => {
+      if (writing.get(symbol) === next) writing.delete(symbol);
+    })
+    .catch(() => undefined);
+  return next;
+}
 
-  const scale = scaleOf(digits);
-  const existing = memory.get(symbol) ?? (await loadArchive(symbol));
+/**
+ * Writes queued per symbol.
+ *
+ * Two sources write here, the live feed and the database downloader, and a merge reads the
+ * archive, awaits, then replaces it. Two of those interleaved would each start from the same
+ * archive and the second would silently discard the first one's bars. Queued, every merge
+ * starts from the one before it.
+ */
+const writing = new Map<string, Promise<unknown>>();
 
-  // Merged through a map keyed by bar time: it makes the overlap rule a single assignment, and
-  // the sort afterwards costs nothing next to the round trip that produced these rows.
-  const merged = new Map<number, [number, number, number, number]>();
+type Row = [time: number, open: number, high: number, low: number, close: number];
 
-  if (existing) {
-    // A digits change would leave the two sets scaled differently, so the stored bars are
-    // rescaled onto the incoming precision rather than silently mixed with it.
-    const ratio = scale / scaleOf(existing.digits);
-    for (let i = 0; i < existing.t.length; i++) {
-      merged.set(existing.t[i], [
-        Math.round(existing.o[i] * ratio),
-        Math.round(existing.h[i] * ratio),
-        Math.round(existing.l[i] * ratio),
-        Math.round(existing.c[i] * ratio),
-      ]);
-    }
-  }
+/** Parse `t,o,h,l,c,...` lines into scaled rows, dropping anything malformed. */
+function parseCsv(text: string, scale: number): Row[] {
+  const rows: Row[] = [];
 
   for (const line of text.split('\n')) {
     if (line.length === 0) continue;
@@ -327,12 +331,118 @@ export async function applyCsv(
     if (!Number.isFinite(open) || !Number.isFinite(high)) continue;
     if (!Number.isFinite(low) || !Number.isFinite(close)) continue;
 
-    merged.set(time, [
+    rows.push([
+      time,
       Math.round(open * scale),
       Math.round(high * scale),
       Math.round(low * scale),
       Math.round(close * scale),
     ]);
+  }
+
+  return rows;
+}
+
+/**
+ * The live feed's every-minute case: bars strictly newer than everything held, in order.
+ *
+ * Same result as the general merge, without rebuilding a map of the whole window to add one
+ * bar: the held arrays are copied across as they are, the new bars go on the end, and as many
+ * fall off the front as the published depth requires.
+ */
+function appendRows(existing: M1Archive, rows: Row[]): M1Archive {
+  const capacity = archiveCandles();
+  const held = existing.t.length;
+  const total = held + rows.length;
+  const drop = Math.max(0, total - capacity);
+  const from = Math.min(held, drop); // held bars popped off the front
+  const skip = drop - from; // incoming bars popped too (only if more arrived than fit)
+  const n = total - drop;
+
+  const archive: M1Archive = {
+    symbol: existing.symbol,
+    digits: existing.digits,
+    t: new Float64Array(n),
+    o: new Int32Array(n),
+    h: new Int32Array(n),
+    l: new Int32Array(n),
+    c: new Int32Array(n),
+    days: { ...existing.days },
+    savedAt: Date.now(),
+  };
+
+  archive.t.set(existing.t.subarray(from));
+  archive.o.set(existing.o.subarray(from));
+  archive.h.set(existing.h.subarray(from));
+  archive.l.set(existing.l.subarray(from));
+  archive.c.set(existing.c.subarray(from));
+
+  for (let i = 0; i < from; i++) {
+    const day = dayName(existing.t[i]);
+    const left = (archive.days[day] ?? 0) - 1;
+    if (left > 0) archive.days[day] = left;
+    else delete archive.days[day];
+  }
+
+  for (let i = skip; i < rows.length; i++) {
+    const at = held - from + (i - skip);
+    const [time, open, high, low, close] = rows[i];
+    archive.t[at] = time;
+    archive.o[at] = open;
+    archive.h[at] = high;
+    archive.l[at] = low;
+    archive.c[at] = close;
+    const day = dayName(time);
+    archive.days[day] = (archive.days[day] ?? 0) + 1;
+  }
+
+  return archive;
+}
+
+async function mergeCsv(
+  symbol: string,
+  digits: number,
+  text: string
+): Promise<M1Archive | undefined> {
+  if (typeof text !== 'string' || text.length === 0) return memory.get(symbol);
+
+  const scale = scaleOf(digits);
+  const existing = memory.get(symbol) ?? (await loadArchive(symbol));
+
+  const rows = parseCsv(text, scale);
+  if (rows.length === 0) return existing;
+
+  if (existing && existing.digits === digits && existing.t.length > 0) {
+    let ascending = rows[0][0] > existing.t[existing.t.length - 1];
+    for (let i = 1; ascending && i < rows.length; i++) ascending = rows[i][0] > rows[i - 1][0];
+    if (ascending) {
+      const archive = appendRows(existing, rows);
+      memory.set(symbol, archive);
+      await dbSet('m1', symbol, archive);
+      return archive;
+    }
+  }
+
+  // Merged through a map keyed by bar time: it makes the overlap rule a single assignment, and
+  // the sort afterwards costs nothing next to the round trip that produced these rows.
+  const merged = new Map<number, [number, number, number, number]>();
+
+  if (existing) {
+    // A digits change would leave the two sets scaled differently, so the stored bars are
+    // rescaled onto the incoming precision rather than silently mixed with it.
+    const ratio = scale / scaleOf(existing.digits);
+    for (let i = 0; i < existing.t.length; i++) {
+      merged.set(existing.t[i], [
+        Math.round(existing.o[i] * ratio),
+        Math.round(existing.h[i] * ratio),
+        Math.round(existing.l[i] * ratio),
+        Math.round(existing.c[i] * ratio),
+      ]);
+    }
+  }
+
+  for (const [time, open, high, low, close] of rows) {
+    merged.set(time, [open, high, low, close]);
   }
 
   // Pop the far end. The publisher counts the newest `capacity` candles of this same series,

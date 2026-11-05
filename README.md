@@ -26,13 +26,15 @@ and forces IPv4 for outbound calls.
 |---|---|
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | The Upstash database. Holds the trading books **and** the market data the seeder publishes. It must be the same database as the seeder's `MARKET_UPSTASH_REDIS_REST_*`. |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | The single sign-in credential. The login screen auto-submits at 6 characters. |
+| `MT5_LIVE_URL` (optional) | A fixed address for the seeder's live feed (`ws://…` or `wss://…`). Without it the app uses whatever the seeder advertises in `mt5:live`. |
 
 ## How it works
 
 ```
-Seeder → Redis (mt5:meta, mt5:manifest, mt5:m1:<SYM>:<day> CSV)
-  → GET /api/mt5/meta, /api/mt5/bars          app/api/mt5/*
-  → BridgeDownloader                           lib/market/bridge.ts   (downloads only days whose count changed)
+Seeder ─┬─ live WebSocket, every closed minute  → LiveFeed          lib/market/live.ts     (tried first)
+        └─ Redis every 15 min (mt5:meta, mt5:manifest, mt5:m1:<SYM>:<day> CSV, mt5:live)
+             → GET /api/mt5/meta, /api/mt5/bars   app/api/mt5/*
+             → BridgeDownloader                   lib/market/bridge.ts   (fallback: downloads only days this device is short of)
   → IndexedDB M1 archive                       lib/market/archive.ts  (fixed 60,000-candle queue per symbol)
   → PlaybackSession                            lib/market/session.ts  (replays at 5× × speed slider, synthesises ticks)
   → MarketStore                                lib/market/store.ts    (quotes, per-timeframe candle series, React hooks)
@@ -40,6 +42,12 @@ Seeder → Redis (mt5:meta, mt5:manifest, mt5:m1:<SYM>:<day> CSV)
   → screens                                    components/{quotes,chart,trade,history,settings}
 ```
 
+- **Two sources, one archive:** the live feed and the database both deliver closed M1 candles
+  only, and the archive merges by timestamp, so a candle has one value whichever path brought it.
+  The database only fetches days this device holds fewer bars of, so it never undoes what the
+  live feed delivered; when the feed is lost it quietly fills the gap. Nothing is shown to the
+  user. A new device gets each symbol's newest day first, then fills backwards in 5,000-bar chunks.
+  An HTTPS deployment needs a `wss://` feed address; with a `ws://` one it simply uses the database.
 - **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD (whatever the seeder publishes).
   Built-in specs live in `lib/instruments.ts`; the broker's real specs override them via `mt5:meta`.
 - **Time:** all timestamps are UTC. The broker's server clock is UTC too.
