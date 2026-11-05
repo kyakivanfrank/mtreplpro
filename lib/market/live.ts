@@ -79,6 +79,11 @@ export interface LiveOptions {
   onLink: (open: boolean) => void;
   /** Every watched symbol is level with the seeder; the database pass may cross-check. */
   onIdle: () => void;
+  /**
+   * An attempt failed before the link came up. The address held may be from an earlier run of
+   * the seeder (its public address is new every run), so it is worth looking up again.
+   */
+  onUnreachable: () => void;
 }
 
 const PROTOCOL = 1;
@@ -317,6 +322,7 @@ export class LiveFeed {
 
     this.settle();
     if (wasOpen) this.options.onLink(false);
+    else if (this.running) this.options.onUnreachable();
     this.scheduleRetry();
   }
 
