@@ -25,7 +25,13 @@ import type { DownloadState } from './bridge';
  * device holds *fewer* bars of than it does, so a device the live feed has carried ahead of it
  * is left alone, and a device that lost the feed is topped up with exactly what it is short.
  * Nothing is ever announced to the user: a lost link means candles arrive every fifteen
- * minutes instead of every minute, and whatever had already arrived stays.
+ * minutes instead of every minute, and whatever had already arrived stays. Nothing is deleted
+ * when the link drops, ever.
+ *
+ * A drop is not a switch. The link is redialled every few seconds, and only if it is still down
+ * after `GRACE_MS` does the database take over. A blip (a phone changing networks, the seeder
+ * restarted) is bridged without anyone noticing, and the reconnect fetches exactly the minutes
+ * that closed while it was away.
  *
  * ── How a device fills ───────────────────────────────────────────────
  *
@@ -108,6 +114,12 @@ const REQUEST_TIMEOUT_MS = 120_000;
 
 /** The seeder sends a heartbeat every 20 s; three missed means the link is dead. */
 const SILENCE_MS = 65_000;
+
+/**
+ * How long a dropped link is given to come back before the database takes over. Redialled the
+ * whole time; reconnecting inside it fetches whatever closed meanwhile, and nothing else happens.
+ */
+const GRACE_MS = 90_000;
 
 const RETRY_MIN_MS = 3_000;
 /** A seeder started after the app is found within this long. */
@@ -271,6 +283,8 @@ export class LiveFeed {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Running while a dropped link is being given time to come back (see `GRACE_MS`). */
+  private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private waiters: (() => void)[] = [];
 
   constructor(options: LiveOptions) {
@@ -300,6 +314,7 @@ export class LiveFeed {
       document.removeEventListener('visibilitychange', this.wake);
     }
     this.clearRetry();
+    this.clearGrace();
     if (this.ws) this.drop(this.ws);
     this.settle();
   }
@@ -331,8 +346,9 @@ export class LiveFeed {
     if (symbol) this.priority = symbol;
   }
 
+  /** Connected, or dropped but still inside its grace period: the live feed is the source. */
   isOpen(): boolean {
-    return this.open;
+    return this.open || this.graceTimer !== null;
   }
 
   /** True while this feed is bringing `symbol` level. The database leaves it alone meanwhile. */
@@ -407,7 +423,15 @@ export class LiveFeed {
     this.headLanded.clear();
 
     this.settle();
-    if (wasOpen) this.options.onLink(false);
+    if (wasOpen && this.running) {
+      // Not lost yet: redial fast, and hand over to the database only if this runs out.
+      this.retry = RETRY_MIN_MS;
+      this.clearGrace();
+      this.graceTimer = setTimeout(() => {
+        this.graceTimer = null;
+        if (!this.open) this.options.onLink(false);
+      }, GRACE_MS);
+    }
     this.scheduleRetry();
   }
 
@@ -423,7 +447,14 @@ export class LiveFeed {
       this.retryTimer = null;
       this.connect();
     }, this.retry);
-    this.retry = Math.min(this.retry * 2, RETRY_MAX_MS);
+    if (!this.graceTimer) this.retry = Math.min(this.retry * 2, RETRY_MAX_MS);
+  }
+
+  private clearGrace(): void {
+    if (this.graceTimer) {
+      clearTimeout(this.graceTimer);
+      this.graceTimer = null;
+    }
   }
 
   private clearRetry(): void {
@@ -507,6 +538,7 @@ export class LiveFeed {
     this.open = true;
     this.connecting = false;
     this.retry = RETRY_MIN_MS;
+    this.clearGrace();
     this.settle();
     this.options.onLink(true);
     void this.pump();
