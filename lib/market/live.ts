@@ -218,10 +218,6 @@ const RELAY_REQUEST_TIMEOUT_MS = 25_000;
 const RELAY_POLL_OFFSET_MS = 7_000;
 const RELAY_HEARTBEAT_MS = 20_000;
 
-function isHttpsPage(): boolean {
-  return typeof location !== 'undefined' && location.protocol === 'https:';
-}
-
 /**
  * The live feed through `/api/mt5/live`, for a page that may not open `ws://` itself.
  *
@@ -476,9 +472,13 @@ export class LiveFeed {
    * seeder is plainly there. It is only not redialled once it drops.
    */
   setEndpoint(url: string | null | undefined): void {
-    // An address this page may not dial itself (a plain ws:// one, from an https page) is
-    // reached through the app's own server instead.
-    const configured = usable(url) ? url : url && isHttpsPage() ? RELAY : null;
+    // One address this page may dial is dialled directly. Anything else goes through the app's
+    // own server: a plain ws:// address from an https page (which the browser would block), or
+    // a list of several (`ws://home:8765,ws://vps:8765`), where the server finds the one that
+    // is running.
+    const list = (url ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
+    const configured =
+      list.length === 1 && usable(list[0]) ? list[0] : list.length > 0 ? RELAY : null;
     writeSetting<string | null>(URL_KEY, configured);
     const next = configured ?? defaultUrl();
     if (next === this.url) return;

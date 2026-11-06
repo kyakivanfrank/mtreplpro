@@ -25,7 +25,7 @@ and forces IPv4 for outbound calls.
 |---|---|
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | The Upstash database. Holds the trading books **and** the market data the seeder publishes. It must be the same database as the seeder's `MARKET_UPSTASH_REDIS_REST_*`. |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | The single sign-in credential. The login screen auto-submits at 6 characters. |
-| `MT5_LIVE_URL` (optional) | Where the seeder's live feed is, e.g. `ws://203.0.113.5:8765`. Set it on the deployment (Vercel etc.): pages served over https cannot open `ws://` themselves, so they reach the feed through this app's `/api/mt5/live` relay, which needs the seeder reachable from the app server (a VPS address, or a home machine with port 8765 forwarded). Without it, a page opened over plain http (localhost, or the LAN address on a phone) connects to `ws://<same host>:8765` directly. If the feed cannot be reached the app uses the database, after giving a dropped link 90 seconds to come back. |
+| `MT5_LIVE_URL` (optional) | Where the seeder's live feed is, e.g. `ws://203.0.113.5:8765`, or several comma-separated (`ws://home:8765,ws://vps:8765`; whichever is running answers). Set it on the deployment (Vercel etc.): pages served over https cannot open `ws://` themselves, so they reach the feed through this app's `/api/mt5/live` relay, which needs the seeder reachable from the app server (a VPS address, or a home machine with port 8765 forwarded). Without it, a page opened over plain http (localhost, or the LAN address on a phone) connects to `ws://<same host>:8765` directly. If the feed cannot be reached the app uses the database, after giving a dropped link 90 seconds to come back. |
 
 ## How it works
 
