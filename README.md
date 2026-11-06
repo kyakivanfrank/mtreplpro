@@ -14,7 +14,6 @@ npm install
 npm run dev          # http://localhost:3000  (also reachable on your LAN)
 npm run build        # production build
 npm run start        # serve the production build
-npm run tunnel       # expose port 3000 through a Cloudflare quick tunnel
 ```
 
 Always use the npm scripts. They go through `scripts/next.mjs`, which fixes Windows path casing
@@ -26,13 +25,13 @@ and forces IPv4 for outbound calls.
 |---|---|
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | The Upstash database. Holds the trading books **and** the market data the seeder publishes. It must be the same database as the seeder's `MARKET_UPSTASH_REDIS_REST_*`. |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | The single sign-in credential. The login screen auto-submits at 6 characters. |
-| `MT5_LIVE_URL` (optional) | A fixed address for the seeder's live feed (`ws://…` or `wss://…`). Without it the app uses whatever the seeder advertises in `mt5:live`. |
+| `MT5_LIVE_URL` (optional) | Where the seeder's live feed is, e.g. `wss://feed.example.com:8765`. An https deployment needs a `wss://` address. Without it, a page opened over plain http (localhost, or the LAN address on a phone) uses `ws://<same host>:8765`, so local testing needs nothing set. |
 
 ## How it works
 
 ```
 Seeder ─┬─ live WebSocket, every closed minute  → LiveFeed          lib/market/live.ts     (tried first)
-        └─ Redis every 15 min (mt5:meta, mt5:manifest, mt5:m1:<SYM>:<day> CSV, mt5:live)
+        └─ Redis every 15 min (mt5:meta, mt5:manifest, mt5:m1:<SYM>:<day> CSV)
              → GET /api/mt5/meta, /api/mt5/bars   app/api/mt5/*
              → BridgeDownloader                   lib/market/bridge.ts   (fallback: downloads only days this device is short of)
   → IndexedDB M1 archive                       lib/market/archive.ts  (fixed 60,000-candle queue per symbol)

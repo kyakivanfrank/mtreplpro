@@ -1,7 +1,7 @@
 'use client';
 
 import { readSetting, writeSetting } from '@/lib/storage';
-import { applyCsv, archiveCandles, archiveRange, loadArchive, setPublishedCandles } from './archive';
+import { applyCsv, archiveRange, heldDays, loadArchive, setPublishedCandles } from './archive';
 import { recordSpec, type InstrumentSpec } from './meta';
 // Type-only: erased at build, so this is not a runtime cycle with bridge.ts.
 import type { DownloadState } from './bridge';
@@ -31,10 +31,21 @@ import type { DownloadState } from './bridge';
  *
  * History is pulled newest-first. On connecting, every watched symbol first gets the bars
  * since the newest one it holds (or, on an empty device, its newest day), with the charted
- * symbol first, so the present is right everywhere within a second or two. Then each symbol is
- * deepened backwards in 5,000-bar chunks until it holds the full published window, which a
- * chart scrolled back shows filling in. Each request starts from what the archive actually
- * holds, so a link lost halfway through simply picks up where it stopped.
+ * symbol first, so the present is right everywhere within a second or two. An empty device
+ * keeps walking backwards in 5,000-bar chunks, which a chart scrolled back shows filling in.
+ *
+ * Then each symbol is checked day by day: the seeder says how many bars it holds on every day,
+ * the archive says how many it holds, and every day this device is short of is fetched, newest
+ * first. A new device, one whose data was deleted, one that was off for a week and one with a
+ * hole in the middle all heal through that same comparison. Each request starts from what the
+ * archive actually holds, so a link lost halfway through simply picks up where it stopped.
+ *
+ * ── Where the seeder is ─────────────────────────────────────────────
+ *
+ * `MT5_LIVE_URL` in the app server's environment, handed over by `/api/mt5/meta`. Without it,
+ * a page opened over plain http (localhost, or the dev server's LAN address on a phone) dials
+ * the seeder on the same host, port 8765, so testing needs no setup at all. A page served over
+ * https may only open `wss://`, so it has no such default.
  *
  * Intentionally not live in the tick sense: no prices inside a minute come over this link. The
  * session synthesizes those from each minute's OHLC, exactly as it does for database candles.
@@ -79,17 +90,15 @@ export interface LiveOptions {
   onLink: (open: boolean) => void;
   /** Every watched symbol is level with the seeder; the database pass may cross-check. */
   onIdle: () => void;
-  /**
-   * An attempt failed before the link came up. The address held may be from an earlier run of
-   * the seeder (its public address is new every run), so it is worth looking up again.
-   */
-  onUnreachable: () => void;
 }
 
 const PROTOCOL = 1;
 
 /** Remembered, so a reload reaches the seeder before the database has even answered. */
-const URL_KEY = 'market.liveUrl';
+const URL_KEY = 'market.liveUrl.v2';
+
+/** The seeder's port when the address comes from the page itself (see `defaultUrl`). */
+const DEFAULT_PORT = 8765;
 
 /** How long to wait for the seeder before letting the database go ahead. */
 const CONNECT_TIMEOUT_MS = 4_000;
@@ -100,8 +109,9 @@ const REQUEST_TIMEOUT_MS = 120_000;
 /** The seeder sends a heartbeat every 20 s; three missed means the link is dead. */
 const SILENCE_MS = 65_000;
 
-const RETRY_MIN_MS = 5_000;
-const RETRY_MAX_MS = 60_000;
+const RETRY_MIN_MS = 3_000;
+/** A seeder started after the app is found within this long. */
+const RETRY_MAX_MS = 30_000;
 
 /** First request per symbol: one trading day, so the present lands fast. */
 const HEAD_CHUNK = 1_440;
@@ -109,7 +119,7 @@ const HEAD_CHUNK = 1_440;
 const DEEP_CHUNK = 5_000;
 
 interface HistoryReply {
-  type: 'history';
+  type: string;
   id: number;
   symbol: string;
   csv: string;
@@ -118,24 +128,40 @@ interface HistoryReply {
   done: boolean;
 }
 
+interface DaysReply {
+  type: string;
+  id: number;
+  symbol: string;
+  days: Record<string, number>;
+}
+
 interface MetaMessage {
   type: 'meta';
   symbols: WireInstrument[];
   candles: number;
 }
 
+/** One history request: the bars with after < t < before. */
+interface Span {
+  before: number;
+  after: number;
+  limit: number;
+}
+
 interface Progress {
-  /** `head`: catching up to the present. `depth`: filling backwards. */
-  phase: 'head' | 'depth' | 'done';
+  /** `head`: catching up to the present. `days`: fetching every day this device is short of. */
+  phase: 'head' | 'days' | 'done';
   /** Head only: ask for bars older than this (0 = the newest). */
   cursor: number;
   /** The newest bar held when this connection began. The head stops once it reaches it. */
   heldTo: number;
   started: boolean;
+  /** Days phase: the requests still to make, newest first. Null until the counts arrive. */
+  queue: Span[] | null;
 }
 
 interface Pending {
-  resolve: (reply: HistoryReply) => void;
+  resolve: (reply: HistoryReply & DaysReply) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -152,6 +178,67 @@ function usable(url: unknown): url is string {
   } catch {
     return false;
   }
+}
+
+const DAY_SECONDS = 86_400;
+
+function dayStart(day: string): number {
+  return Date.parse(`${day}T00:00:00Z`) / 1000;
+}
+
+/**
+ * The requests that bring this device level with the seeder's day counts, newest first.
+ *
+ * Every day held short (`<`, never `!=`: holding more of a day than the seeder's window counts
+ * is normal at its far end) is fetched. Neighbouring short days share a request up to one deep
+ * chunk, so an empty window costs a dozen requests rather than fifty.
+ */
+function shortfall(served: Record<string, number>, held: Record<string, number>): Span[] {
+  const days = Object.keys(served).sort();
+  const spans: Span[] = [];
+  let from = '';
+  let to = '';
+  let bars = 0;
+
+  const flush = () => {
+    if (!bars) return;
+    spans.push({
+      after: dayStart(from) - 1,
+      before: dayStart(to) + DAY_SECONDS,
+      // Slack for bars that close between the count and the request.
+      limit: Math.min(bars + 120, 10_000),
+    });
+    bars = 0;
+  };
+
+  for (let i = days.length - 1; i >= 0; i--) {
+    const day = days[i];
+    const want = served[day];
+    if ((held[day] ?? 0) >= want) {
+      flush();
+      continue;
+    }
+    if (bars && bars + want <= DEEP_CHUNK) {
+      from = day;
+      bars += want;
+    } else {
+      flush();
+      from = to = day;
+      bars = want;
+    }
+  }
+  flush();
+  return spans;
+}
+
+/**
+ * The seeder on the page's own host, for a page opened over plain http: localhost on the
+ * machine running everything, or the dev server's LAN address on a phone. An https page may
+ * only open `wss://`, so it gets no default and needs `MT5_LIVE_URL`.
+ */
+function defaultUrl(): string | null {
+  if (typeof location === 'undefined' || location.protocol !== 'http:') return null;
+  return `ws://${location.hostname}:${DEFAULT_PORT}`;
 }
 
 export class LiveFeed {
@@ -197,7 +284,7 @@ export class LiveFeed {
     this.running = true;
 
     const remembered = readSetting<string | null>(URL_KEY, null);
-    this.url = usable(remembered) ? remembered : null;
+    this.url = usable(remembered) ? remembered : defaultUrl();
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.wake);
@@ -218,18 +305,17 @@ export class LiveFeed {
   }
 
   /**
-   * The address the seeder advertises, from `/api/mt5/meta`. `null` means no seeder is serving.
-   *
-   * A link that is up is never torn down because the advertisement lapsed: the seeder is
-   * plainly there. It is only not redialled once it drops.
+   * The configured address, from `/api/mt5/meta` (`MT5_LIVE_URL`). Nothing configured falls
+   * back to `defaultUrl`. A link that is up is never torn down for losing its address: the
+   * seeder is plainly there. It is only not redialled once it drops.
    */
   setEndpoint(url: string | null | undefined): void {
-    const next = usable(url) ? url : null;
+    const configured = usable(url) ? url : null;
+    writeSetting<string | null>(URL_KEY, configured);
+    const next = configured ?? defaultUrl();
     if (next === this.url) return;
 
     this.url = next;
-    writeSetting<string | null>(URL_KEY, next);
-
     if (next === null) return;
     if (this.ws) this.drop(this.ws);
     this.retry = RETRY_MIN_MS;
@@ -322,7 +408,6 @@ export class LiveFeed {
 
     this.settle();
     if (wasOpen) this.options.onLink(false);
-    else if (this.running) this.options.onUnreachable();
     this.scheduleRetry();
   }
 
@@ -386,8 +471,9 @@ export class LiveFeed {
       case 'meta':
         this.handleMeta(message as unknown as MetaMessage);
         break;
-      case 'history': {
-        const reply = message as unknown as HistoryReply;
+      case 'history':
+      case 'days': {
+        const reply = message as unknown as HistoryReply & DaysReply;
         const pending = this.requests.get(reply.id);
         if (pending) {
           this.requests.delete(reply.id);
@@ -491,7 +577,7 @@ export class LiveFeed {
     if (!progress) {
       await loadArchive(symbol);
       const held = archiveRange(symbol);
-      progress = { phase: 'head', cursor: 0, heldTo: held.to, started: false };
+      progress = { phase: 'head', cursor: 0, heldTo: held.to, started: false, queue: null };
       this.progress.set(symbol, progress);
       if (held.count === 0) this.options.onDownloadState(symbol, 'downloading');
     }
@@ -513,31 +599,27 @@ export class LiveFeed {
         if (archiveRange(symbol).count > 0) this.options.onDownloadState(symbol, 'ready');
       }
 
-      if (reply.done) {
-        this.finish(symbol, progress); // the seeder holds nothing older at all
-        return false;
-      }
-      if (reply.count < limit) {
-        progress.phase = 'depth'; // everything since `heldTo` has arrived: joined up
+      if (reply.done || reply.count < limit) {
+        // Joined up with what was held (or the seeder has nothing older): the present is in.
+        progress.phase = 'days';
       } else {
         progress.cursor = reply.oldest; // still a gap between this and what is held
       }
       return true;
     }
 
-    // Depth: below the oldest bar held, until the archive holds the published window.
-    const held = archiveRange(symbol);
-    if (held.count === 0 || held.count >= archiveCandles()) {
+    // Days: whatever this device is still short of, by the seeder's own per-day counts.
+    if (!progress.queue) {
+      const counts = await this.request({ type: 'days', symbol });
+      progress.queue = shortfall(counts.days ?? {}, heldDays(symbol));
+    }
+    const span = progress.queue.shift();
+    if (!span) {
       this.finish(symbol, progress);
       return false;
     }
-
-    const reply = await this.history(symbol, held.from, 0, DEEP_CHUNK);
+    const reply = await this.history(symbol, span.before, span.after, span.limit);
     await this.apply(symbol, reply.csv);
-    if (reply.done || reply.count === 0) {
-      this.finish(symbol, progress);
-      return false;
-    }
     return true;
   }
 
@@ -559,11 +641,15 @@ export class LiveFeed {
     after: number,
     limit: number
   ): Promise<HistoryReply> {
+    return this.request({ type: 'history', symbol, before, after, limit });
+  }
+
+  private request(body: Record<string, unknown>): Promise<HistoryReply & DaysReply> {
     const ws = this.ws;
     if (!ws || !this.open) return Promise.reject(new Error('live feed closed'));
 
     const id = this.nextId++;
-    return new Promise<HistoryReply>((resolve, reject) => {
+    return new Promise<HistoryReply & DaysReply>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.requests.delete(id);
         reject(new Error('live feed request timed out'));
@@ -572,7 +658,7 @@ export class LiveFeed {
 
       this.requests.set(id, { resolve, reject, timer });
       try {
-        ws.send(JSON.stringify({ type: 'history', id, symbol, before, after, limit }));
+        ws.send(JSON.stringify({ ...body, id }));
       } catch {
         this.drop(ws);
       }

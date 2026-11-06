@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "node scripts/next.mjs dev",
     "build": "node scripts/next.mjs build",
-    "start": "node scripts/next.mjs start",
-    "tunnel": "node scripts/tunnel.mjs"
+    "start": "node scripts/next.mjs start"
   },
   "dependencies": {
     "next": "^16.3.1",
@@ -18,7 +17,6 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.4.19",
-    "cloudflared": "^0.7.3",
     "postcss": "^8.4.45",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.5.4"

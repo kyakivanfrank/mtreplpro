@@ -50,7 +50,7 @@ import {
  * ── Second of two sources ────────────────────────────────────────────
  *
  * The seeder also serves every closed minute over a WebSocket (`live.ts`), and that is tried
- * first. This downloader owns it: it hands it the address the catalogue advertises, gives it a
+ * first. This downloader owns it: it hands it the address the catalogue carries, gives it a
  * few seconds to answer before the first pass, and leaves alone any symbol it is filling. The
  * day diff above is what keeps the two from fighting: the live feed only ever leaves this
  * device holding *more* of a day than the manifest, which is never a reason to download, so
@@ -62,13 +62,6 @@ const API = '/api/mt5';
 
 /** How often the archives are brought forward. Matches the publisher's own fifteen-minute cycle. */
 const REFRESH_MS = 15 * 60 * 1000;
-
-/**
- * First gap before re-reading the catalogue for a new live address after one fails. Doubles
- * up to `REFRESH_MS`. The seeder's public address is new on every run, so after a restart this
- * is how long a device takes to find it: about two minutes, then the link is up.
- */
-const LOOKUP_MIN_MS = 2 * 60 * 1000;
 
 /**
  * Retry gap while the publisher is still backfilling.
@@ -121,7 +114,7 @@ interface MetaReply {
   days: number;
   updated: number;
   manifest: Manifest;
-  /** Where the seeder's live feed is listening, or null when none is running. */
+  /** The live feed's address from the app's environment (`MT5_LIVE_URL`), or null. */
   live?: { url?: string } | null;
 }
 
@@ -190,7 +183,6 @@ export class BridgeDownloader {
       onLink: (open) => {
         this.updateSource();
         if (open) {
-          this.lookupGap = LOOKUP_MIN_MS;
           // Also clears any database error the store is showing (see its onStatus).
           this.setStatus('live');
         } else {
@@ -200,22 +192,8 @@ export class BridgeDownloader {
       },
       // Level with the seeder: one pass confirms nothing the database holds is missing here.
       onIdle: () => this.refreshAll(),
-      // The address held did not answer. Re-read the catalogue, which carries the current one,
-      // on a widening gap: it is the same edge-cached request every pass makes, so a seeder
-      // that is simply switched off costs the database nothing extra.
-      onUnreachable: () => {
-        const now = Date.now();
-        if (now - this.lastLookup < this.lookupGap) return;
-        this.lastLookup = now;
-        this.lookupGap = Math.min(this.lookupGap * 2, REFRESH_MS);
-        this.refreshAll();
-      },
     });
   }
-
-  /** When the live address was last looked up again, and how long until the next time. */
-  private lastLookup = 0;
-  private lookupGap = LOOKUP_MIN_MS;
 
   /* ---------- lifecycle ---------- */
 
