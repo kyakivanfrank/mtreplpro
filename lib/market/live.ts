@@ -50,8 +50,12 @@ import type { DownloadState } from './bridge';
  *
  * `MT5_LIVE_URL` in the app server's environment, handed over by `/api/mt5/meta`. Without it,
  * a page opened over plain http (localhost, or the dev server's LAN address on a phone) dials
- * the seeder on the same host, port 8765, so testing needs no setup at all. A page served over
- * https may only open `wss://`, so it has no such default.
+ * the seeder on the same host, port 8765, so testing needs no setup at all.
+ *
+ * A page served over https (any deployment) is not allowed to open a plain `ws://` connection,
+ * so it reaches the same feed through its own server instead (`RelaySocket`, `/api/mt5/live`):
+ * the same messages, carried over https requests, with the minute push replaced by one small
+ * poll just after each minute closes. Everything else in this file cannot tell the difference.
  *
  * Intentionally not live in the tick sense: no prices inside a minute come over this link. The
  * session synthesizes those from each minute's OHLC, exactly as it does for database candles.
@@ -145,6 +149,8 @@ interface DaysReply {
   id: number;
   symbol: string;
   days: Record<string, number>;
+  /** False while the seeder is still reading its full window. */
+  loaded?: boolean;
 }
 
 interface MetaMessage {
@@ -172,6 +178,16 @@ interface Progress {
   queue: Span[] | null;
 }
 
+/** What this file needs of a WebSocket. `RelaySocket` provides the same over https requests. */
+interface Link {
+  onopen: (() => void) | null;
+  onmessage: ((event: { data: unknown }) => void) | null;
+  onclose: (() => void) | null;
+  onerror: (() => void) | null;
+  send(data: string): void;
+  close(): void;
+}
+
 interface Pending {
   resolve: (reply: HistoryReply & DaysReply) => void;
   reject: (err: Error) => void;
@@ -190,6 +206,141 @@ function usable(url: unknown): url is string {
   } catch {
     return false;
   }
+}
+
+/** In place of an address: reach the seeder through this app's own server. */
+const RELAY = 'relay';
+const RELAY_API = '/api/mt5/live';
+/** A connect through the relay goes app server -> seeder, possibly from a cold start. */
+const RELAY_CONNECT_TIMEOUT_MS = 15_000;
+const RELAY_REQUEST_TIMEOUT_MS = 25_000;
+/** Polled this long after each minute ends: the seeder counts a minute closed 5 s after. */
+const RELAY_POLL_OFFSET_MS = 7_000;
+const RELAY_HEARTBEAT_MS = 20_000;
+
+function isHttpsPage(): boolean {
+  return typeof location !== 'undefined' && location.protocol === 'https:';
+}
+
+/**
+ * The live feed through `/api/mt5/live`, for a page that may not open `ws://` itself.
+ *
+ * Speaks exactly what the seeder's socket speaks: `hello` is answered with `meta`, `history` and
+ * `days` with their replies, and while it is up a `bars` message arrives just after every
+ * minute closes (from the seeder's newest bars; `LiveFeed` ignores the ones already held) and
+ * an `hb` every 20 s. Any failed request closes it, which `LiveFeed` treats like a dropped
+ * socket: quick redials inside the grace period, then the database.
+ *
+ * The poll is skipped while the page is hidden and made at once when it is shown again, so a
+ * phone in a pocket costs nothing.
+ */
+class RelaySocket implements Link {
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  private done = false;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private beatTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    setTimeout(() => {
+      if (!this.done) this.onopen?.();
+    }, 0);
+  }
+
+  send(data: string): void {
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(data);
+    } catch {
+      return;
+    }
+
+    if (body.type === 'hello') {
+      void this.call({ op: 'meta' }).then((meta) => {
+        if (!meta) return;
+        this.deliver(meta);
+        this.startPush();
+      });
+      return;
+    }
+
+    if (body.type === 'history' || body.type === 'days') {
+      const { type, id, ...rest } = body;
+      void this.call({ op: type, ...rest }).then((reply) => {
+        if (reply) this.deliver({ ...reply, id });
+      });
+    }
+  }
+
+  close(): void {
+    if (this.done) return;
+    this.done = true;
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    if (this.beatTimer) clearInterval(this.beatTimer);
+    this.pollTimer = this.beatTimer = null;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisible);
+    }
+    setTimeout(() => this.onclose?.(), 0);
+  }
+
+  private async call(params: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) query.set(key, String(value));
+    }
+    try {
+      const response = await fetch(`${RELAY_API}?${query}`, {
+        signal: AbortSignal.timeout(RELAY_REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`relay ${response.status}`);
+      return (await response.json()) as Record<string, unknown>;
+    } catch {
+      this.close();
+      return null;
+    }
+  }
+
+  private deliver(message: unknown): void {
+    if (!this.done) this.onmessage?.({ data: JSON.stringify(message) });
+  }
+
+  private startPush(): void {
+    if (this.done) return;
+    this.beatTimer = setInterval(() => this.deliver({ type: 'hb' }), RELAY_HEARTBEAT_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisible);
+    }
+    this.schedulePoll();
+  }
+
+  private schedulePoll(): void {
+    if (this.done) return;
+    const now = Date.now();
+    const next = Math.floor(now / 60_000) * 60_000 + 60_000 + RELAY_POLL_OFFSET_MS;
+    this.pollTimer = setTimeout(this.poll, next - now);
+  }
+
+  private poll = async (): Promise<void> => {
+    this.pollTimer = null;
+    if (this.done) return;
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+      const latest = await this.call({ op: 'latest' });
+      if (!latest) return;
+      this.deliver(latest);
+    }
+    this.schedulePoll();
+  };
+
+  private onVisible = (): void => {
+    if (this.done || typeof document === 'undefined') return;
+    if (document.visibilityState === 'hidden') return;
+    if (this.pollTimer) clearTimeout(this.pollTimer);
+    void this.poll();
+  };
 }
 
 const DAY_SECONDS = 86_400;
@@ -258,7 +409,7 @@ export class LiveFeed {
   private running = false;
   private url: string | null = null;
 
-  private ws: WebSocket | null = null;
+  private ws: Link | null = null;
   private open = false;
   private connecting = false;
   private lastMessage = 0;
@@ -298,7 +449,7 @@ export class LiveFeed {
     this.running = true;
 
     const remembered = readSetting<string | null>(URL_KEY, null);
-    this.url = usable(remembered) ? remembered : defaultUrl();
+    this.url = remembered === RELAY || usable(remembered) ? remembered : defaultUrl();
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.wake);
@@ -325,7 +476,9 @@ export class LiveFeed {
    * seeder is plainly there. It is only not redialled once it drops.
    */
   setEndpoint(url: string | null | undefined): void {
-    const configured = usable(url) ? url : null;
+    // An address this page may not dial itself (a plain ws:// one, from an https page) is
+    // reached through the app's own server instead.
+    const configured = usable(url) ? url : url && isHttpsPage() ? RELAY : null;
     writeSetting<string | null>(URL_KEY, configured);
     const next = configured ?? defaultUrl();
     if (next === this.url) return;
@@ -371,9 +524,10 @@ export class LiveFeed {
     if (!this.running || !this.url || this.ws) return;
     this.clearRetry();
 
-    let ws: WebSocket;
+    const relay = this.url === RELAY;
+    let ws: Link;
     try {
-      ws = new WebSocket(this.url);
+      ws = relay ? new RelaySocket() : (new WebSocket(this.url) as unknown as Link);
     } catch {
       this.scheduleRetry();
       return;
@@ -381,9 +535,12 @@ export class LiveFeed {
 
     this.ws = ws;
     this.connecting = true;
-    this.connectTimer = setTimeout(() => {
-      if (!this.open) this.drop(ws);
-    }, CONNECT_TIMEOUT_MS);
+    this.connectTimer = setTimeout(
+      () => {
+        if (!this.open) this.drop(ws);
+      },
+      relay ? RELAY_CONNECT_TIMEOUT_MS : CONNECT_TIMEOUT_MS
+    );
 
     ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', v: PROTOCOL }));
     ws.onmessage = (event) => this.receive(ws, event.data);
@@ -393,7 +550,7 @@ export class LiveFeed {
     };
   }
 
-  private drop(ws: WebSocket): void {
+  private drop(ws: Link): void {
     try {
       ws.close();
     } catch {
@@ -402,7 +559,7 @@ export class LiveFeed {
     this.closed(ws);
   }
 
-  private closed(ws: WebSocket): void {
+  private closed(ws: Link): void {
     if (ws !== this.ws) return;
     this.ws = null;
 
@@ -479,7 +636,7 @@ export class LiveFeed {
     }
   };
 
-  private armSilence(ws: WebSocket): void {
+  private armSilence(ws: Link): void {
     this.lastMessage = Date.now();
     if (this.silenceTimer) clearTimeout(this.silenceTimer);
     this.silenceTimer = setTimeout(() => this.drop(ws), SILENCE_MS);
@@ -487,7 +644,7 @@ export class LiveFeed {
 
   /* ---------- messages ---------- */
 
-  private receive(ws: WebSocket, data: unknown): void {
+  private receive(ws: Link, data: unknown): void {
     if (ws !== this.ws || typeof data !== 'string') return;
     this.armSilence(ws);
 
@@ -558,7 +715,14 @@ export class LiveFeed {
         this.buffered.set(symbol, queue);
         continue;
       }
-      void this.apply(symbol, csv);
+      // Only what this device does not hold yet. A relayed poll repeats the last few minutes
+      // every time, and re-applying them would redraw the chart for nothing.
+      const newest = archiveRange(symbol).to;
+      const fresh = csv
+        .split('\n')
+        .filter((line) => Number(line.slice(0, line.indexOf(','))) > newest)
+        .join('\n');
+      if (fresh) void this.apply(symbol, fresh);
     }
   }
 
@@ -642,7 +806,13 @@ export class LiveFeed {
 
     // Days: whatever this device is still short of, by the seeder's own per-day counts.
     if (!progress.queue) {
-      const counts = await this.request({ type: 'days', symbol });
+      let counts = await this.request({ type: 'days', symbol });
+      // The seeder is still reading its full window (it has just started): ask again shortly
+      // rather than settle for the part it has so far.
+      for (let tries = 0; counts.loaded === false && tries < 24 && this.open; tries++) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        counts = await this.request({ type: 'days', symbol });
+      }
       progress.queue = shortfall(counts.days ?? {}, heldDays(symbol));
     }
     const span = progress.queue.shift();
