@@ -10,7 +10,7 @@ import { dbGet, dbKeys, dbSet } from '@/lib/db';
  *
  * The spec is the substance of it: digits, point size, contract size and the real spread used
  * to be hard-coded constants in lib/instruments.ts because the REST providers carried no
- * bid/ask at all. The bridge sends the broker's actual numbers, so they are stored per symbol
+ * bid/ask at all. The seeder publishes the broker's actual numbers, so they are stored per symbol
  * and the constants became a fallback for a device that has never connected.
  *
  * There used to be a sync watermark here as well, so a reconnect could ask for the tail rather
@@ -39,6 +39,36 @@ export interface InstrumentSpec {
   volumeMin: number;
   volumeMax: number;
   volumeStep: number;
+}
+
+/** The broker spec as the seeder publishes it and `/api/mt5/meta` serves it. */
+export interface WireInstrument {
+  symbol: string;
+  broker: string;
+  description: string;
+  group: string;
+  digits: number;
+  point: number;
+  contract_size: number;
+  spread: number;
+  volume_min: number;
+  volume_max: number;
+  volume_step: number;
+}
+
+export function specFromWire(item: WireInstrument): InstrumentSpec {
+  return {
+    broker: item.broker,
+    description: item.description,
+    group: item.group,
+    digits: item.digits,
+    point: item.point,
+    contractSize: item.contract_size,
+    spread: item.spread,
+    volumeMin: item.volume_min,
+    volumeMax: item.volume_max,
+    volumeStep: item.volume_step,
+  };
 }
 
 const memory = new Map<string, SymbolMeta>();

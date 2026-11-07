@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { redisDelete, redisGetEx, redisSet } from '@/lib/redis';
+import { remove, rpc } from '@/lib/supabase';
 import { readSession, SESSION_COOKIE } from '@/lib/auth/session';
 import { normalizeAccountKey } from '@/lib/accountKey';
 
@@ -25,10 +25,13 @@ import { normalizeAccountKey } from '@/lib/accountKey';
  *
  * ── Cleanup ──────────────────────────────────────────────────────────
  *
- * Every key carries a TTL, re-armed on every read and every write. There is no registry of
- * known accounts, no scheduled job and no scan: a book that nobody has opened in a week is
- * removed by Redis itself. An index would be a second thing to keep in sync — and would need
- * pruning of its own, which is the problem again one level up.
+ * Every book carries an expiry, pushed out on every read and every write (`book_get` and
+ * `book_put` in the seeder's supabase/schema.sql). There is no registry of known accounts and no
+ * scheduled job: each write sweeps out the books nobody has opened in a week. An index would be a
+ * second thing to keep in sync, and would need pruning of its own.
+ *
+ * Needs SUPABASE_SECRET_KEY on the server: books are closed to the publishable key. Without it
+ * every call answers 503 and the app carries on with the copy on the device.
  */
 
 /** A week of not being opened, and the mirror is dropped. The device's own copy is untouched. */
@@ -36,10 +39,6 @@ const RETENTION_SECONDS = 7 * 24 * 60 * 60;
 
 /** Books are small (positions, orders, closed deals) but a runaway history shouldn't persist. */
 const MAX_BYTES = 512 * 1024;
-
-function bookKey(account: string): string {
-  return `mt5:book:acct:${account}`;
-}
 
 /** Signed in at all? Not *which* account — see the note above. */
 function authenticated(request: NextRequest): boolean {
@@ -61,7 +60,11 @@ export async function GET(request: NextRequest) {
 
     // Reading is also using: the expiry is pushed out here, so an account being watched rather
     // than traded does not quietly age out from under its owner.
-    const books = await redisGetEx<unknown>(bookKey(account), RETENTION_SECONDS);
+    const books = await rpc<unknown>(
+      'book_get',
+      { p_account: account, p_ttl_seconds: RETENTION_SECONDS },
+      'secret'
+    );
     return NextResponse.json({ books: books ?? null });
   } catch (err) {
     // The store being down must not look like "you have no positions" — say so plainly and
@@ -100,7 +103,11 @@ async function save(request: NextRequest) {
       return NextResponse.json({ error: 'invalid body' }, { status: 400 });
     }
 
-    await redisSet(bookKey(account), payload.books, RETENTION_SECONDS);
+    await rpc(
+      'book_put',
+      { p_account: account, p_books: payload.books, p_ttl_seconds: RETENTION_SECONDS },
+      'secret'
+    );
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('Book write error:', err);
@@ -124,7 +131,7 @@ export async function DELETE(request: NextRequest) {
     const account = normalizeAccountKey(request.nextUrl.searchParams.get('account'));
     if (!account) return noAccount();
 
-    await redisDelete(bookKey(account));
+    await remove('books', { account: `eq.${account}` });
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('Book delete error:', err);

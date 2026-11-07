@@ -17,7 +17,7 @@
   remove redundancy; do not re-architect features.
 - **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD at 60,000 M1 candles each, as set
   in the seeder's `config.json`. The app follows whatever `/api/mt5/meta` reports.
-- **Stack in use:** Next.js 16 App Router, React 19, Tailwind 3, Upstash Redis over REST. The chart
+- **Stack in use:** Next.js 16 App Router, React 19, Tailwind 3, Supabase over REST (server routes only). The chart
   is a hand-written canvas engine (`components/chart/engine/MT5Chart.ts`), not a library. Icons are
   hand-made SVG components in `components/icons/`. Two fonts, as on the real terminal: the system
   font (SF Pro) for UI text, and Roboto Condensed (self-hosted, `.mt5-cond`) for symbols, prices and

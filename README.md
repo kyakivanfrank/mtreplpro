@@ -5,7 +5,7 @@ M1 candles from an Exness trial account, synthesises ticks inside each minute, a
 order engine on top of them: market and pending orders, SL/TP, swap, margin and stop-out.
 
 Market data comes from the **seeder** in [`MT5 replica Seeder/`](MT5%20replica%20Seeder/README.md),
-which publishes candles from a real MT5 terminal into Upstash Redis.
+which writes every closed minute from a real MT5 terminal into a Supabase database.
 
 ## Quick start
 
@@ -23,17 +23,21 @@ and forces IPv4 for outbound calls.
 
 | Variable | Purpose |
 |---|---|
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | The Upstash database. Holds the trading books **and** the market data the seeder publishes. It must be the same database as the seeder's `MARKET_UPSTASH_REDIS_REST_*`. |
+| `SUPABASE_URL` | The Supabase project the seeder writes into (`https://<ref>.supabase.co`). Its layout is the seeder's `supabase/schema.sql`. |
+| `SUPABASE_PUBLISHABLE_KEY` | Reads market data and nothing else (enforced by row-level security in the database), so it is safe in a committed env file. |
+| `SUPABASE_SECRET_KEY` | Full access, used only by `/api/book` for the account mirror. Server-only: `.env.local` and the host's environment, **never a public repo**. Without it the app works in full except the server copy of each book. |
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | The single sign-in credential. The login screen auto-submits at 6 characters. |
-| `MT5_LIVE_URL` (optional) | Where the seeder's live feed is, e.g. `ws://203.0.113.5:8765`, or several comma-separated (`ws://home:8765,ws://vps:8765`; whichever is running answers). Set it on the deployment (Vercel etc.): pages served over https cannot open `ws://` themselves, so they reach the feed through this app's `/api/mt5/live` relay, which needs the seeder reachable from the app server (a VPS address, or a home machine with port 8765 forwarded). Without it, a page opened over plain http (localhost, or the LAN address on a phone) connects to `ws://<same host>:8765` directly. If the feed cannot be reached the app uses the database, after giving a dropped link 90 seconds to come back. |
+
+The browser never talks to Supabase: everything goes through this app's own routes.
 
 ## How it works
 
 ```
-Seeder ─┬─ live WebSocket, every closed minute  → LiveFeed          lib/market/live.ts     (tried first)
-        └─ Redis every 15 min (mt5:meta, mt5:manifest, mt5:m1:<SYM>:<day> CSV)
-             → GET /api/mt5/meta, /api/mt5/bars   app/api/mt5/*
-             → BridgeDownloader                   lib/market/bridge.ts   (fallback: downloads only days this device is short of)
+Seeder → Supabase (candles + feed), every closed minute as it closes
+  → GET /api/mt5/meta     specs, depth, per-day bar counts   app/api/mt5/meta
+  → GET /api/mt5/bars     one symbol's bars on named days    app/api/mt5/bars   (cached by content)
+  → GET /api/mt5/latest   newest bars of every symbol        app/api/mt5/latest (polled once a minute)
+  → BridgeDownloader + MinuteFeed                            lib/market/bridge.ts, minute.ts
   → IndexedDB M1 archive                       lib/market/archive.ts  (fixed 60,000-candle queue per symbol)
   → PlaybackSession                            lib/market/session.ts  (replays at 5× × speed slider, synthesises ticks)
   → MarketStore                                lib/market/store.ts    (quotes, per-timeframe candle series, React hooks)
@@ -41,18 +45,24 @@ Seeder ─┬─ live WebSocket, every closed minute  → LiveFeed          lib/
   → screens                                    components/{quotes,chart,trade,history,settings}
 ```
 
-- **Two sources, one archive:** the live feed and the database both deliver closed M1 candles
-  only, and the archive merges by timestamp, so a candle has one value whichever path brought it.
-  The database only fetches days this device holds fewer bars of, so it never undoes what the
-  live feed delivered; when the feed is lost it quietly fills the gap. Nothing is shown to the
-  user. A new device gets each symbol's newest day first, then fills backwards in 5,000-bar chunks.
-  An HTTPS deployment needs a `wss://` feed address; with a `ws://` one it simply uses the database.
+- **Two jobs, one archive.** `MinuteFeed` asks `/api/mt5/latest` a few seconds after every
+  minute boundary and applies the bars that join on to what the device holds: a new candle
+  shows up about 8 s after its minute closes. `BridgeDownloader` compares the database's per-day
+  bar counts with the device's own and downloads only the days it is short of, newest week
+  first: on start (a new device fills 6 x 60,000 candles in about 20 s), every 15 minutes, when
+  the app comes back into view or online, and whenever the minute feed finds a gap.
+- **One database read a minute, however many devices.** `/api/mt5/latest` is cached at the edge
+  until the next minute is due, and `/api/mt5/bars` URLs name each day's bar count, so every
+  device filling the same days shares one cached answer. No realtime connections, no
+  per-device quota.
+- **Seeder off:** the database keeps everything it wrote. Devices keep the last candles, Settings
+  > Market Data > Source says `Seeder off`, and the feed picks up on its own when it returns.
 - **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD (whatever the seeder publishes).
-  Built-in specs live in `lib/instruments.ts`; the broker's real specs override them via `mt5:meta`.
+  Built-in specs live in `lib/instruments.ts`; the broker's real specs override them via `/api/mt5/meta`.
 - **Time:** all timestamps are UTC. The broker's server clock is UTC too.
 - **Book persistence:** open positions and balance go to localStorage (instant first paint), the
-  full book with history goes to IndexedDB, and a copy is mirrored to Redis under
-  `mt5:book:acct:<account number>` (7-day TTL) so a reinstall finds it.
+  full book with history goes to IndexedDB, and a copy is mirrored to Supabase (`books`
+  table, keyed by account number, dropped after a week unopened) so a reinstall finds it.
 - **Auth:** one credential pair and an HMAC-signed 30-day cookie (`lib/auth/session.ts`). No database.
 - **Chart setup mode:** long-press the `•••` corner on the chart for the replay window: seek,
   start time and speed.
@@ -65,7 +75,7 @@ app/            Next.js routes: page, layout, manifest, api/{auth,book,mt5}
 components/     Screens and UI, one folder per tab plus ui/ and icons/
 lib/            market/ (data + playback), trading/ (engine + store), auth/, storage, db, account
 public/         sw.js (hand-written service worker), icons, splash screens, fonts
-scripts/        next.mjs (CLI wrapper), generate-splash.mjs, purge-auth.mjs
+scripts/        next.mjs (CLI wrapper), generate-splash.mjs
 docs/           CODE_AUDIT.md: known bugs, what was fixed, what is still open
 references/     design reference screenshot
 ```

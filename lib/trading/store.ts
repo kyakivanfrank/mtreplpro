@@ -55,7 +55,7 @@ import {
  *   IndexedDB    — the complete book, history included. No 5MB ceiling, so a long-running
  *                  account can no longer hit a silent write failure that takes the balance
  *                  with it.
- *   Upstash      — a debounced mirror keyed to the account number, so the same number on a
+ *   Supabase     — a debounced mirror keyed to the account number, so the same number on a
  *                  reinstalled PWA finds its positions waiting.
  *
  * The device is the source of truth in all three cases; the server copy is continuity, not

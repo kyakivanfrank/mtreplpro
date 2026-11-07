@@ -29,7 +29,7 @@ const nextBin = realpathSync.native(
  * address of both api.twelvedata.com and query1.finance.yahoo.com returns EHOSTUNREACH, while
  * IPv4 connects in under 100ms. Since Node 20, `fetch` tries IPv6 first (Happy Eyeballs) and
  * only falls back after a timeout, so on a network like this every upstream call inherits that
- * stall and a slow one surfaces as `fetch failed`. Because Upstash, Twelve Data and Yahoo all
+ * stall and a slow one surfaces as `fetch failed`. Because Supabase, Twelve Data and Yahoo all
  * share the one broken path, they appear to fail together, which looks like three outages and
  * is really one.
  *

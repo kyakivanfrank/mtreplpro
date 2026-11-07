@@ -5,10 +5,10 @@ import { formatBytes, type StorageStatus } from '@/lib/db';
 import { useFeedSource } from '@/lib/market/store';
 import type { FeedSource } from '@/lib/market/bridge';
 
-/** How each path reads in the Source row, and how it is coloured. */
+/** How each state reads in the Source row, and how it is coloured. */
 const SOURCE_LABEL: Record<FeedSource, { text: string; className: string }> = {
-  live: { text: 'Live feed · every minute', className: 'text-accent' },
-  database: { text: 'Database · every 15 min', className: '' },
+  live: { text: 'Live · every minute', className: 'text-accent' },
+  idle: { text: 'Seeder off · last saved candles', className: '' },
   connecting: { text: 'Connecting…', className: 'text-muted' },
   offline: { text: 'Offline · using saved data', className: 'text-muted' },
 };
@@ -39,7 +39,7 @@ export function MarketDataSection({
   return (
     <Section
       title="Market Data"
-      footer={`Charts are drawn from 1-minute candles stored on this device. Source shows where new ones are coming from: the live feed delivers each candle as its minute closes, and when it cannot be reached the database takes over, updated every 15 minutes. The switch happens on its own and nothing already downloaded is lost. The terminal keeps the newest ${publishedCandles.toLocaleString()} candles of every instrument — a fixed amount of chart, so a pair that does not trade at weekends simply reaches further back to fill it — and this device mirrors that queue exactly. Only days whose candle count has actually changed are ever downloaded. About ${formatBytes(perSymbolBytes)} per symbol.`}
+      footer={`Charts are drawn from 1-minute candles stored on this device. While the seeder is running, each new candle arrives a few seconds after its minute closes. When it is not, the database keeps the last candles it wrote, so charts carry on from there and pick up again on their own when it returns. Nothing already downloaded is lost either way. The terminal keeps the newest ${publishedCandles.toLocaleString()} candles of every instrument — a fixed amount of chart, so a pair that does not trade at weekends simply reaches further back to fill it — and this device mirrors that queue exactly. Only days whose candle count has actually changed are ever downloaded. About ${formatBytes(perSymbolBytes)} per symbol.`}
     >
       <ReadoutRow
         label="Source"
