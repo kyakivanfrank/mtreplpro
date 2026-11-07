@@ -90,6 +90,13 @@ function requestGroups(stale: string[], published: string[]): string[][] {
   return [...groups.values()].map((days) => days.sort());
 }
 
+/**
+ * How often a symbol's charts are redrawn while its history streams in. Each redraw re-buckets
+ * the whole archive into every open timeframe, so doing it per chunk would repeat that work a
+ * dozen times over a first fill for nothing a person could see.
+ */
+const ANNOUNCE_MS = 1_000;
+
 /** Whether the market database is answering. */
 export type BridgeStatus = 'connecting' | 'live' | 'offline';
 
@@ -440,21 +447,37 @@ export class BridgeDownloader {
     const first = needsFullDownload(symbol);
     if (first) this.options.onDownloadState?.(symbol, 'downloading');
 
+    const groups = requestGroups(stale, Object.keys(published));
+    let announcedAt = 0;
+    let unannounced = false;
+
     try {
-      for (const group of requestGroups(stale, Object.keys(published))) {
+      for (let i = 0; i < groups.length; i++) {
         if (!this.running) return;
         // Each day names the count it should hold, which makes the URL name its content: every
         // device filling the same days shares one cached answer (see /api/mt5/bars).
-        const days = group.map((day) => `${day}:${published[day]}`).join(',');
+        const days = groups[i].map((day) => `${day}:${published[day]}`).join(',');
         const response = await this.request(`bars?symbol=${encodeURIComponent(symbol)}&days=${days}`);
+        // Stored as soon as it lands: whatever has arrived is kept if a later request fails.
         await applyCsv(symbol, digits, await response.text());
-        this.announce(symbol);
+        unannounced = true;
+
+        // Redraw for the first chunk (the newest days: the chart is usable at once), then at
+        // most every ANNOUNCE_MS while older weeks stream in behind it, and for the last one.
+        const now = Date.now();
+        if (i === 0 || i === groups.length - 1 || now - announcedAt >= ANNOUNCE_MS) {
+          this.announce(symbol);
+          announcedAt = now;
+          unannounced = false;
+        }
       }
 
       console.info(
         `[archive] ${symbol}: ${stale.length} day(s) updated${first ? ' (first fill)' : ''}`
       );
     } catch (err) {
+      // Keep and show what did arrive; the next pass asks only for the days still short.
+      if (unannounced) this.announce(symbol);
       if (first && needsFullDownload(symbol)) this.options.onDownloadState?.(symbol, 'missing');
       throw err; // let the pass back off rather than grind through a database that is down
     }

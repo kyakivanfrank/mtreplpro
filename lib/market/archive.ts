@@ -399,6 +399,62 @@ function appendRows(existing: M1Archive, rows: Row[]): M1Archive {
   return archive;
 }
 
+/**
+ * The history download's case: bars strictly older than everything held, in order.
+ *
+ * History arrives newest week first, so every chunk after the first lands entirely before the
+ * oldest bar already held. That is a copy, not a merge: the new bars go in front, the held
+ * arrays follow as they are, and no map of the whole window is built or sorted. Over a first
+ * fill of 100,000 candles it is the difference between a dozen full rebuilds and a dozen
+ * memory copies. If the window is already full, the oldest incoming bars are the ones left out.
+ */
+function prependRows(existing: M1Archive, rows: Row[]): M1Archive {
+  const capacity = archiveCandles();
+  const held = Math.min(existing.t.length, capacity);
+  const skip = existing.t.length - held; // held bars over capacity (only if the depth shrank)
+  const take = Math.max(0, Math.min(rows.length, capacity - held));
+  const first = rows.length - take; // incoming bars that do not fit, the oldest of them
+  const n = take + held;
+
+  const archive: M1Archive = {
+    symbol: existing.symbol,
+    digits: existing.digits,
+    t: new Float64Array(n),
+    o: new Int32Array(n),
+    h: new Int32Array(n),
+    l: new Int32Array(n),
+    c: new Int32Array(n),
+    days: { ...existing.days },
+    savedAt: Date.now(),
+  };
+
+  for (let i = 0; i < skip; i++) {
+    const day = dayName(existing.t[i]);
+    const left = (archive.days[day] ?? 0) - 1;
+    if (left > 0) archive.days[day] = left;
+    else delete archive.days[day];
+  }
+
+  for (let i = 0; i < take; i++) {
+    const [time, open, high, low, close] = rows[first + i];
+    archive.t[i] = time;
+    archive.o[i] = open;
+    archive.h[i] = high;
+    archive.l[i] = low;
+    archive.c[i] = close;
+    const day = dayName(time);
+    archive.days[day] = (archive.days[day] ?? 0) + 1;
+  }
+
+  archive.t.set(existing.t.subarray(skip), take);
+  archive.o.set(existing.o.subarray(skip), take);
+  archive.h.set(existing.h.subarray(skip), take);
+  archive.l.set(existing.l.subarray(skip), take);
+  archive.c.set(existing.c.subarray(skip), take);
+
+  return archive;
+}
+
 async function mergeCsv(
   symbol: string,
   digits: number,
@@ -417,6 +473,15 @@ async function mergeCsv(
     for (let i = 1; ascending && i < rows.length; i++) ascending = rows[i][0] > rows[i - 1][0];
     if (ascending) {
       const archive = appendRows(existing, rows);
+      memory.set(symbol, archive);
+      await dbSet('m1', symbol, archive);
+      return archive;
+    }
+
+    let older = rows[rows.length - 1][0] < existing.t[0];
+    for (let i = 1; older && i < rows.length; i++) older = rows[i][0] > rows[i - 1][0];
+    if (older) {
+      const archive = prependRows(existing, rows);
       memory.set(symbol, archive);
       await dbSet('m1', symbol, archive);
       return archive;
