@@ -33,13 +33,13 @@ import type { Candle, TimeframeKey } from './types';
  * How deep the archive goes — decided by the publisher, not by this device.
  *
  * This was a setting once, with a slider and a destructive re-download behind it. It could
- * only ever disagree with reality: the VPS publishes a fixed window and pops the far end of
- * it every cycle, so a device asking for 150 days of a 25-day feed was asking for something
+ * only ever disagree with reality: the seeder keeps a fixed window and trims the far end of
+ * it as new minutes arrive, so a device asking for 150 days of a 25-day feed was asking for something
  * nobody was ever going to send. Worse, the two counted differently — the setting in bars
  * (`days x 1440`), the publisher in calendar days — so on forex, where weekends carry no
  * bars at all, "30 days" locally meant about forty on the tape.
  *
- * Now there is one number, it arrives with the data in `mt5:meta`, and it is counted in
+ * Now there is one number, it arrives with the data in `/api/mt5/meta`, and it is counted in
  * *candles* rather than days — because a day is not a fixed amount of chart. Crypto trades
  * seven days a week and forex five, so "25 days" meant 36,000 minutes of BTCUSD and about
  * 26,000 of EURUSD: a third less history on the pair most likely to be on screen. Counted
@@ -51,7 +51,7 @@ const MINUTES_PER_DAY = 1_440;
 // Only used until `/api/mt5/meta` answers; the seeder's `candles` setting is the real value.
 const DEFAULT_CANDLES = 60_000;
 
-/** Set from `mt5:meta` as soon as the catalogue lands; the default only covers the gap. */
+/** Set from `/api/mt5/meta` as soon as the catalogue lands; the default only covers the gap. */
 let publishedCandles = DEFAULT_CANDLES;
 
 export function setPublishedCandles(candles: number): void {
@@ -86,7 +86,7 @@ export interface M1Archive {
   /**
    * `{"2026-08-22": 1440}` — how many bars this device actually holds for each day.
    *
-   * The same shape the publisher writes into `mt5:manifest`, and the whole basis of the
+   * The same shape as the manifest in `/api/mt5/meta`, and the whole basis of the
    * sync: comparing the two says exactly which days have moved since this archive was last
    * touched, so the device asks for those and nothing else. Counted from the bars that were
    * really stored rather than copied from the manifest, which is what makes it self-correcting
@@ -299,7 +299,7 @@ export function applyCsv(
 /**
  * Writes queued per symbol.
  *
- * Two sources write here, the live feed and the database downloader, and a merge reads the
+ * Two jobs write here, the minute feed and the downloader's day passes, and a merge reads the
  * archive, awaits, then replaces it. Two of those interleaved would each start from the same
  * archive and the second would silently discard the first one's bars. Queued, every merge
  * starts from the one before it.
@@ -344,7 +344,7 @@ function parseCsv(text: string, scale: number): Row[] {
 }
 
 /**
- * The live feed's every-minute case: bars strictly newer than everything held, in order.
+ * The minute feed's case: bars strictly newer than everything held, in order.
  *
  * Same result as the general merge, without rebuilding a map of the whole window to add one
  * bar: the held arrays are copied across as they are, the new bars go on the end, and as many

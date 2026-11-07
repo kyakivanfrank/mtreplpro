@@ -208,9 +208,7 @@ class MarketStore {
 
   getDownload = (symbol: string): DownloadState => this.downloads.get(symbol) ?? 'missing';
 
-  getBridgeStatus = (): BridgeStatus => this.status;
-
-  /** Where new candles are coming from right now: the live feed or the database. */
+  /** Whether new candles are arriving from the database right now (see `FeedSource`). */
   getFeedSource = (): FeedSource => this.source;
 
   /** Everything the terminal publishes. Empty until the catalogue lands. */
@@ -848,7 +846,7 @@ export function usePublished(): string[] {
   );
 }
 
-/** Live feed or database: which path is delivering candles. For the Settings data section. */
+/** Whether new candles are arriving: live, seeder off, connecting or offline. For Settings. */
 export function useFeedSource(): FeedSource {
   return useSyncExternalStore(
     marketStore.subscribe,

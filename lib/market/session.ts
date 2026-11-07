@@ -49,10 +49,10 @@ import type { Candle, Tick, TickHandler } from './types';
  * and an M1 candle closes every twelve seconds — which is what makes the chart look like it
  * is trading.
  *
- * The cost is tape. The publisher adds thirty minutes of history every thirty minutes, so the
- * session now consumes it faster than it arrives and drains `(speed - 1)` seconds of runway
+ * The cost is tape. The seeder adds one minute of history every minute, so the session now
+ * consumes it faster than it arrives and drains `(speed - 1)` seconds of runway
  * per second. That is not a failure mode — running out just holds the clock at the end of the
- * archive until the next publish, which `noteArchiveGrowth` already handles — but it is why
+ * archive until the next minute lands, which `noteArchiveGrowth` already handles — but it is why
  * the default lookback below scales with this number rather than staying at two hours.
  *
  * Raise it for a faster tape, drop it to 1 for true real time. Nothing else needs to change:
@@ -112,8 +112,8 @@ const FRAME_MS = 50;
 /**
  * Where the window starts by default: this far behind the newest bar held.
  *
- * Two hours, and the session plays from the moment it has bars. The terminal publishes every
- * thirty minutes, so a clock two hours back consumes tape at exactly the rate new tape
+ * Two hours, and the session plays from the moment it has bars. New tape arrives every
+ * minute, so at real time a clock two hours back consumes tape at exactly the rate it
  * arrives — it never catches up and never runs dry. Opening the app therefore lands on a
  * market that is already moving, with two hours of runway in front of it, instead of a still
  * chart waiting to be told to start. Setting a start marker later just re-seats the clock
@@ -647,8 +647,7 @@ export class PlaybackSession {
   /**
    * Called after a refresh has appended bars.
    *
-   * This is what keeps a running session from ever stalling: the thirty-minute download extends
-   * the tape, and the end margin follows it, so playing at wall-clock rate a few hours behind
+   * This is what keeps a running session from ever stalling: each new minute extends the tape, and the end margin follows it, so playing at wall-clock rate a few hours behind
    * the present can continue indefinitely.
    */
   noteArchiveGrowth(): void {
@@ -664,8 +663,8 @@ export class PlaybackSession {
       this.patch({ endMs: bounds.toMs });
 
       // Waiting at the end of the tape when more of it arrives. This is the ordinary case,
-      // not an edge one: the clock runs at real time and the publisher adds thirty minutes
-      // every thirty minutes, so any device that was briefly offline lands here.
+      // not an edge one: the clock outruns the tape above 1x, and the seeder adds a minute
+      // every minute, so a session parked at the end resumes as soon as the next one lands.
       if (this.autoResume && !this.state.playing) this.play();
     }
   }
