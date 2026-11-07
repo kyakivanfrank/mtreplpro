@@ -15,7 +15,8 @@
 - **Owner decisions (do not undo):** keep the look-ahead autotrader, realistic ticket/account
   numbers, the account named "Prime" on server `Exness-MT5Real32` (was Exness *trial* naming, changed by the owner 2026-10-31), ledger rows named `D-`/`W-ngbank-USD-<14 hex>` (real shape, references/het.PNG), the single shared login, and no "simulated" labelling. Fix bugs and
   remove redundancy; do not re-architect features.
-- **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD at 60,000 M1 candles each, as set
+- **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, USOIL, EURJPY, GBPNZD at
+  100,000 M1 candles each, as set
   in the seeder's `config.json`. The app follows whatever `/api/mt5/meta` reports.
 - **Stack in use:** Next.js 16 App Router, React 19, Tailwind 3, Supabase over REST (server routes only). The chart
   is a hand-written canvas engine (`components/chart/engine/MT5Chart.ts`), not a library. Icons are

@@ -68,9 +68,9 @@ const QUOTES_PERSIST_MS = 5_000;
  * anywhere earlier than that left the history in front of it simply absent from the chart,
  * looking as though the session had hidden it. It had not; it was never seeded.
  */
-// Sized to show the whole published window (60,000 M1 candles): M1 needs 60k, M5 12k, M15 4k.
-// Raise these if the seeder's `candles` setting is ever raised above ~64,000.
-const CHART_MAX_BARS: Partial<Record<TimeframeKey, number>> = { M1: 64_000, M5: 13_000 };
+// Sized to show the whole published window (100,000 M1 candles): M1 needs 100k, M5 20k, M15
+// 6.7k. Raise these if the seeder's `candles` setting is ever raised above ~104,000.
+const CHART_MAX_BARS: Partial<Record<TimeframeKey, number>> = { M1: 104_000, M5: 21_000, M15: 7_000 };
 const DEFAULT_MAX_BARS = 5_000;
 
 function maxBarsFor(timeframe: TimeframeKey): number {

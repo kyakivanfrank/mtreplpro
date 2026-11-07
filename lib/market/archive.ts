@@ -49,7 +49,7 @@ import type { Candle, TimeframeKey } from './types';
 const MINUTES_PER_DAY = 1_440;
 
 // Only used until `/api/mt5/meta` answers; the seeder's `candles` setting is the real value.
-const DEFAULT_CANDLES = 60_000;
+const DEFAULT_CANDLES = 100_000;
 
 /** Set from `/api/mt5/meta` as soon as the catalogue lands; the default only covers the gap. */
 let publishedCandles = DEFAULT_CANDLES;

@@ -38,7 +38,7 @@ Seeder → Supabase (candles + feed), every closed minute as it closes
   → GET /api/mt5/bars     one symbol's bars on named days    app/api/mt5/bars   (cached by content)
   → GET /api/mt5/latest   newest bars of every symbol        app/api/mt5/latest (polled once a minute)
   → BridgeDownloader + MinuteFeed                            lib/market/bridge.ts, minute.ts
-  → IndexedDB M1 archive                       lib/market/archive.ts  (fixed 60,000-candle queue per symbol)
+  → IndexedDB M1 archive                       lib/market/archive.ts  (fixed 100,000-candle queue per symbol)
   → PlaybackSession                            lib/market/session.ts  (replays at 5× × speed slider, synthesises ticks)
   → MarketStore                                lib/market/store.ts    (quotes, per-timeframe candle series, React hooks)
   → TradingStore + engine                      lib/trading/*          (book, orders, SL/TP, swap, margin, rewind)
@@ -49,7 +49,7 @@ Seeder → Supabase (candles + feed), every closed minute as it closes
   minute boundary and applies the bars that join on to what the device holds: a new candle
   shows up about 8 s after its minute closes. `BridgeDownloader` compares the database's per-day
   bar counts with the device's own and downloads only the days it is short of, newest week
-  first: on start (a new device fills 6 x 60,000 candles in about 20 s), every 15 minutes, when
+  first: on start (a new device fills its watchlist's candles in a minute or so), every 15 minutes, when
   the app comes back into view or online, and whenever the minute feed finds a gap.
 - **One database read a minute, however many devices.** `/api/mt5/latest` is cached at the edge
   until the next minute is due, and `/api/mt5/bars` URLs name each day's bar count, so every
@@ -57,7 +57,9 @@ Seeder → Supabase (candles + feed), every closed minute as it closes
   per-device quota.
 - **Seeder off:** the database keeps everything it wrote. Devices keep the last candles, Settings
   > Market Data > Source says `Seeder off`, and the feed picks up on its own when it returns.
-- **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD (whatever the seeder publishes).
+- **Instruments:** XAUUSD, BTCUSD, EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, USOIL, EURJPY, GBPNZD
+  (whatever the seeder publishes). A fresh watchlist starts with the first six; a device downloads
+  only the symbols in its watchlist.
   Built-in specs live in `lib/instruments.ts`; the broker's real specs override them via `/api/mt5/meta`.
 - **Time:** all timestamps are UTC. The broker's server clock is UTC too.
 - **Book persistence:** open positions and balance go to localStorage (instant first paint), the

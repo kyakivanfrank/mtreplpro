@@ -146,6 +146,7 @@ export function contractSize(symbol: string): number {
 
   if (instrument?.group === 'Crypto') return 1;
   if (instrument?.group === 'Metals') return 100;
+  if (instrument?.group === 'Energies') return 1_000;
   return 100_000;
 }
 

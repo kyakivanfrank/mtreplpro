@@ -62,10 +62,33 @@ const RETRY_MIN_MS = 2_000;
 const RETRY_MAX_MS = 60_000;
 
 /**
- * Days per history request. Small enough that the newest week lands (and the chart is usable)
- * while older weeks are still on their way, and each request is a shareable, cacheable unit.
+ * How the days a device is short of are split into history requests, newest first.
+ *
+ * Shaped for the edge cache. A request's URL names each day with its bar count, so a URL whose
+ * days never change can be shared by every device for a month, and one whose days move cannot be
+ * shared at all. Two days move all the time: the newest (it grows every minute) and the oldest
+ * (the seeder trims it as the window slides). Each goes in a request of its own. Everything in
+ * between is final, and is grouped by fixed calendar week, so the same week is the same URL for
+ * every device on every day. A new device's database reads come down to about two days per
+ * symbol; the rest is served from the cache.
+ *
+ * A week per request also means the newest week lands, and the chart is usable, while older
+ * weeks are still on their way.
  */
-const DAYS_PER_REQUEST = 7;
+function requestGroups(stale: string[], published: string[]): string[][] {
+  const sorted = [...published].sort();
+  const newest = sorted[sorted.length - 1];
+  const oldest = sorted[0];
+  const week = (day: string) => Math.floor(Date.parse(`${day}T00:00:00Z`) / 86_400_000 / 7);
+  const key = (day: string) => (day === newest ? 'newest' : day === oldest ? 'oldest' : `w${week(day)}`);
+
+  const groups = new Map<string, string[]>();
+  for (const day of [...stale].sort().reverse()) {
+    const name = key(day);
+    groups.set(name, [...(groups.get(name) ?? []), day]);
+  }
+  return [...groups.values()].map((days) => days.sort());
+}
 
 /** Whether the market database is answering. */
 export type BridgeStatus = 'connecting' | 'live' | 'offline';
@@ -418,15 +441,11 @@ export class BridgeDownloader {
     if (first) this.options.onDownloadState?.(symbol, 'downloading');
 
     try {
-      for (let i = 0; i < stale.length; i += DAYS_PER_REQUEST) {
+      for (const group of requestGroups(stale, Object.keys(published))) {
         if (!this.running) return;
         // Each day names the count it should hold, which makes the URL name its content: every
         // device filling the same days shares one cached answer (see /api/mt5/bars).
-        const days = stale
-          .slice(i, i + DAYS_PER_REQUEST)
-          .sort()
-          .map((day) => `${day}:${published[day]}`)
-          .join(',');
+        const days = group.map((day) => `${day}:${published[day]}`).join(',');
         const response = await this.request(`bars?symbol=${encodeURIComponent(symbol)}&days=${days}`);
         await applyCsv(symbol, digits, await response.text());
         this.announce(symbol);

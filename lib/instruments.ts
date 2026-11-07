@@ -51,7 +51,7 @@ export interface Instrument {
   fromBroker: boolean;
 }
 
-export const GROUPS = ['Forex Majors', 'Forex Crosses', 'Metals', 'Crypto'] as const;
+export const GROUPS = ['Forex Majors', 'Forex Crosses', 'Metals', 'Energies', 'Crypto'] as const;
 export type InstrumentGroup = (typeof GROUPS)[number];
 
 const M: InstrumentGroup = 'Forex Majors';
@@ -154,6 +154,10 @@ export const INSTRUMENTS: Instrument[] = [
   other('XAUUSD', 'Gold', 'US Dollar', 'Metals', 2, 25, 100, 0.01, 50, 0.01),
   other('XAGUSD', 'Silver Spot', 'US Dollar', 'Metals', 3, 30, 5_000, 0.01, 50, 0.01),
 
+  /* --- energies: a CFD on the forex week, 1,000 barrels per lot until the broker says otherwise --- */
+  other('USOIL', 'Crude Oil WTI', 'US Dollar', 'Energies', 3, 30, 1_000, 0.01, 50, 0.01),
+  other('UKOIL', 'Crude Oil Brent', 'US Dollar', 'Energies', 3, 30, 1_000, 0.01, 50, 0.01),
+
   /* --- crypto: 1 coin per lot, trades every day of the week --- */
   other('BTCUSD', 'Bitcoin', 'US Dollar', 'Crypto', 2, 2_000, 1, 0.01, 10, 0.01),
   other('ETHUSD', 'Ethereum', 'US Dollar', 'Crypto', 2, 200, 1, 0.01, 100, 0.01),
@@ -230,7 +234,8 @@ export function allInstruments(): Instrument[] {
     'Forex Majors': 0,
     'Forex Crosses': 1,
     Metals: 2,
-    Crypto: 3,
+    Energies: 3,
+    Crypto: 4,
   };
   return [...merged.values()].sort(
     (a, b) => (order[a.group] ?? 9) - (order[b.group] ?? 9) || a.symbol.localeCompare(b.symbol)
